@@ -183,63 +183,77 @@ class UndirectedGraph(graph.UndirectedGraph_):
 
 if __name__ == "__main__":
 
-    from graph import twenty_
+    from graph import twenty_, graph2nx, nx2ax, HAS_NX_MPL, watts_strogatz
 
-    graph = twenty_(UndirectedGraph())
+    # graph = twenty_(UndirectedGraph())
+    n = 30
+    graph = watts_strogatz(UndirectedGraph(), n=n, k=6)
 
     print(graph)
 
-    try:
+    # Define start and goal vertices
+    start_vertex = 0
+    goal_vertex = n // 2
+
+    # Run each search algorithm
+    algorithms = [
+        ("DFS", graph.dfs(start_vertex, goal_vertex)),
+        ("BFS", graph.bfs(start_vertex, goal_vertex)),
+        ("UCS", graph.ucs(start_vertex, goal_vertex)),
+    ]
+
+    # Print a summary
+    print("\n" + "=" * 50)
+    print("Search Algorithm Comparison:")
+    print("=" * 50)
+    print("Number of nodes:", len(graph.graph.keys()))
+    for algo_name, (path, total_weight) in algorithms:
+        if path:
+            print(f"{algo_name}: {len(path)-1} steps, total weight {total_weight:.1f}")
+        else:
+            print(f"{algo_name}: No path found")
+
+    if HAS_NX_MPL:
+
         import matplotlib.pyplot as plt
         import networkx as nx
 
         # Create a figure to display BFS, DFS, and UCS paths
         fig, axes = plt.subplots(1, 3, figsize=(18, 6))
 
-        # Convert the graph to networkx for visualization
-        nx_graph = graph.to_networkx()
+        # Convert the graph to networkx for visualization using graph.py's function
+        nx_graph = graph2nx(graph)
 
         # Use a consistent layout for all subplots
         pos = nx.spring_layout(nx_graph, seed=42)
 
-        # Define start and goal vertices
-        start_vertex = "N0"
-        goal_vertex = "N19"
-
-        # Run each search algorithm
-        algorithms = [
-            ("DFS", graph.dfs(start_vertex, goal_vertex)),
-            ("BFS", graph.bfs(start_vertex, goal_vertex)),
-            ("UCS", graph.ucs(start_vertex, goal_vertex)),
-        ]
-
         for i, (algo_name, (path, total_weight)) in enumerate(algorithms):
             ax = axes[i]
 
-            # Draw the base graph
-            nx.draw(
-                nx_graph,
-                pos,
-                ax=ax,
-                with_labels=True,
-                node_color="lightgray",
-                node_size=500,
-                font_size=8,
-                font_weight="bold",
-                edge_color="gray",
-                width=1,
-            )
+            # Draw the base graph using nx2ax from graph.py
+            nx2ax(nx_graph, ax, seed=42)
 
             # Highlight the path if found
             if path:
                 # Highlight path edges
                 path_edges = list(zip(path[:-1], path[1:]))
                 nx.draw_networkx_edges(
-                    nx_graph, pos, ax=ax, edgelist=path_edges, edge_color="red", width=3
+                    nx_graph,
+                    pos,
+                    ax=ax,
+                    edgelist=path_edges,
+                    edge_color="steelblue",
+                    width=3,
                 )
                 # Highlight path nodes
                 nx.draw_networkx_nodes(
-                    nx_graph, pos, ax=ax, nodelist=path, node_color="red", node_size=600
+                    nx_graph,
+                    pos,
+                    ax=ax,
+                    nodelist=path,
+                    node_color="lightsteelblue",
+                    node_size=600,
+                    edgecolors="black",
                 )
                 # Highlight start and goal nodes
                 nx.draw_networkx_nodes(
@@ -247,14 +261,9 @@ if __name__ == "__main__":
                     pos,
                     ax=ax,
                     nodelist=[start_vertex, goal_vertex],
-                    node_color="green",
+                    node_color="lightskyblue",
                     node_size=700,
-                )
-
-                # Add edge weights
-                edge_labels = nx.get_edge_attributes(nx_graph, "weight")
-                nx.draw_networkx_edge_labels(
-                    nx_graph, pos, ax=ax, edge_labels=edge_labels, font_size=6
+                    edgecolors="black",
                 )
 
                 ax.set_title(f"{algo_name} Path\nTotal Weight: {total_weight:.1f}")
@@ -277,20 +286,3 @@ if __name__ == "__main__":
         )
         plt.tight_layout()
         plt.show()
-
-        # Print a summary
-        print("\n" + "=" * 50)
-        print("Search Algorithm Comparison:")
-        print("=" * 50)
-        for algo_name, (path, total_weight) in algorithms:
-            if path:
-                print(
-                    f"{algo_name}: {len(path)-1} steps, total weight {total_weight:.1f}"
-                )
-            else:
-                print(f"{algo_name}: No path found")
-
-    except ImportError as e:
-        print(f"Required GUI visualization libraries not found: {e}")
-        print("\nPlease consider installing these libraries:")
-        print("pip install matplotlib networkx")

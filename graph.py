@@ -166,8 +166,121 @@ class UndirectedGraph_:
 T = TypeVar("T", bound="UndirectedGraph_")
 
 
-def twenty_(graph: T, weighted: bool = True, more_edges: bool = True) -> T:
+def watts_strogatz(
+    graph: T,
+    n: int = 20,
+    k: int = 4,
+    beta: float = 0.3,
+    weight_range: Tuple[Union[int, float], Union[int, float]] = (1, 10),
+    seed: Optional[int] = None,
+) -> T:
+    """
+    Generate a Watts-Strogatz small-world graph.
 
+    The graph starts as a ring lattice where each node is connected to its k nearest neighbors
+    (k/2 on each side). Then, with probability beta, each edge is rewired to a random node.
+
+    Args:
+        graph: An empty instance of a subclass of UndirectedGraph_ to populate
+        n: Number of nodes in the graph
+        k: Each node is connected to k nearest neighbors in ring topology (must be even)
+        beta: Probability of rewiring each edge (0 <= beta <= 1)
+        weight_range: Tuple (min_weight, max_weight) for edge weights
+        seed: Random seed for reproducibility
+
+    Returns:
+        T: The populated Watts-Strogatz small-world graph
+
+    Raises:
+        ValueError: If parameters are invalid
+        AssertionError: If graph is not empty
+    """
+    assert len(graph) == 0, "You probably wanted to start with an empty graph!"
+
+    if n <= 0:
+        raise ValueError("n must be positive")
+    if k <= 0 or k % 2 != 0:
+        raise ValueError("k must be a positive even integer")
+    if k >= n:
+        raise ValueError("k must be less than n")
+    if beta < 0 or beta > 1:
+        raise ValueError("beta must be between 0 and 1")
+    if weight_range[0] > weight_range[1]:
+        raise ValueError("min_weight must be <= max_weight")
+
+    # Initialize random number generator
+    rng = random.Random(seed)
+
+    # Add vertices
+    for i in range(n):
+        graph.add_vertex(i)
+
+    # Track which edges exist to avoid duplicates
+    edges_set: Set[Tuple[int, ...]] = set()
+
+    # First, create the regular ring lattice
+    for node in range(n):
+        for j in range(1, k // 2 + 1):
+            neighbor = (node + j) % n
+            # Sort to ensure undirected edge representation is consistent
+            edge = tuple(sorted((node, neighbor)))
+            if edge not in edges_set:
+                edges_set.add(edge)
+
+    # Now rewire edges with probability beta
+    rewired_edges_set: Set[Tuple[int, ...]] = set()
+
+    for u, v in edges_set:
+        if rng.random() < beta:
+            # Choose a new random node to connect to u
+            # The new node must be different from u and not already connected to u
+            possible_nodes = [
+                i
+                for i in range(n)
+                if i != u
+                and tuple(sorted((u, i))) not in edges_set
+                and tuple(sorted((u, i))) not in rewired_edges_set
+            ]
+
+            if possible_nodes:
+                new_v = rng.choice(possible_nodes)
+                # Remove old edge (u, v) and add new edge (u, new_v)
+                rewired_edges_set.add(tuple(sorted((u, new_v))))
+                # Don't add the original edge
+                continue
+
+        # Keep the original edge
+        rewired_edges_set.add((u, v))
+
+    # Add all edges to the graph with random weights
+    for u, v in rewired_edges_set:
+        weight = round(rng.uniform(weight_range[0], weight_range[1]), 2)
+        graph.add_edge(u, v, weight)
+
+    return graph
+
+
+def twenty_(graph: T, weighted: bool = True, more_edges: bool = True) -> T:
+    """
+    Generate a 20-node graph with multiple paths from N0 to N19.
+
+    This graph is designed to demonstrate differences between search algorithms:
+    - DFS tends to follow the deep path (N0→N3→N4→N5→N6→N7→N19) with light initial edges
+      but an expensive final hop
+    - BFS explores breadth-first and may find alternative paths
+    - UCS finds the optimal cost path considering edge weights
+
+    Args:
+        graph: An empty instance of a subclass of UndirectedGraph_ to populate
+        weighted: If True, edges have random weights; if False, all edges have weight 1
+        more_edges: If True, adds additional cross-connections making the graph more complex
+
+    Returns:
+        T: The populated 20-node graph
+
+    Raises:
+        AssertionError: If graph is not empty
+    """
     assert len(graph) == 0, "You probably wanted to start with an empty graph!"
 
     nodes: List[str] = [f"N{i}" for i in range(20)]
@@ -263,6 +376,8 @@ try:
         # Create a layout for the nodes
         pos = nx.spring_layout(nx_graph, seed=seed)
 
+        edge_labels = nx.get_edge_attributes(nx_graph, "weight")
+
         # Plot graph
         nx.draw(
             nx_graph,
@@ -270,7 +385,7 @@ try:
             ax=ax,
             with_labels=True,
             node_color="lightgray",
-            node_size=700,
+            node_size=(500 + max(len(str(node)) for node in list(nx_graph)) * 100,),
             font_size=10,
             font_weight="bold",
             edge_color="gray",
@@ -280,6 +395,8 @@ try:
 
         # Draw edge labels (weights)
         edge_labels = nx.get_edge_attributes(nx_graph, "weight")
+        for key in edge_labels.keys():
+            edge_labels[key] = round(edge_labels[key], 1)
         nx.draw_networkx_edge_labels(
             nx_graph, pos, edge_labels=edge_labels, font_size=10
         )
@@ -309,6 +426,24 @@ if __name__ == "__main__":
         nx2ax(graph2nx(graph), ax)
 
         plt.title("A 20-node Graph")
+        plt.axis("off")
+        plt.tight_layout()
+        plt.show()
+
+    n, k = 40, 6
+    graph = watts_strogatz(UndirectedGraph_(), n=n, k=k)
+
+    print("\nGraph Information:")
+    print(f"Number of vertices: {len(graph)}")
+    print(f"Number of edges: {len(graph.get_edges())}")
+
+    if HAS_NX_MPL:
+
+        fig, ax = plt.subplots(figsize=(12, 8))
+
+        nx2ax(graph2nx(graph), ax)
+
+        plt.title(f"A Watts-Strogatz network (n={n}, k={k})")
         plt.axis("off")
         plt.tight_layout()
         plt.show()
