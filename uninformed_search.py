@@ -180,14 +180,66 @@ class UndirectedGraph(graph.UndirectedGraph_):
 
         return None, 0
 
+    def all_simple_paths(
+        self, start_vertex: Any, goal_vertex: Any
+    ) -> List[List[Any]]:
+        """
+        Find all simple paths (paths without cycles) from start_vertex to goal_vertex
+        using iterative depth-first search (DFS).
+
+        A simple path is a path where no vertex appears more than once. This method
+        explores all possible routes between the start and goal vertices, excluding
+        any paths that would create cycles.
+
+        Args:
+            start_vertex: Starting vertex for the paths
+            goal_vertex: Goal vertex to reach
+
+        Returns:
+            List[List[Any]]: A list of all simple paths, where each path is a list of
+                            vertices from start_vertex to goal_vertex. Returns an empty
+                            list if no paths exist or if either vertex is not in the graph.
+
+        Examples:
+            >>> graph = UndirectedGraph()
+            >>> graph.add_edge("A", "B")
+            >>> graph.add_edge("B", "C")
+            >>> graph.add_edge("A", "C")
+            >>> paths = graph.all_simple_paths("A", "C")
+            >>> print(paths)
+            [['A', 'B', 'C'], ['A', 'C']]
+
+        Note:
+            - The number of simple paths can grow exponentially with graph size
+            - Edge weights are not considered in this search
+            - The algorithm uses iterative DFS to avoid recursion depth limits
+        """
+        if not self.has_vertex(start_vertex) or not self.has_vertex(goal_vertex):
+            return []
+
+        stack = [(start_vertex, [start_vertex])]
+        all_paths = []
+
+        while stack:
+            current_vertex, path = stack.pop()
+
+            if current_vertex == goal_vertex:
+                all_paths.append(path.copy())
+                continue  # Continue searching for other paths
+
+            for neighbor, _ in self.graph[current_vertex].items():
+                if neighbor not in path:
+                    stack.append((neighbor, path + [neighbor]))
+
+        return all_paths
 
 if __name__ == "__main__":
 
-    from graph import twenty_, graph2nx, nx2ax, HAS_NX_MPL, watts_strogatz
+    from graph import twenty_, graph2nx, nx2ax, HAS_NX_MPL, watts_strogatz_
 
     # graph = twenty_(UndirectedGraph())
     n = 30
-    graph = watts_strogatz(UndirectedGraph(), n=n, k=6)
+    graph = watts_strogatz_(UndirectedGraph(), n=n, k=6)
 
     print(graph)
 
@@ -231,7 +283,7 @@ if __name__ == "__main__":
             ax = axes[i]
 
             # Draw the base graph using nx2ax from graph.py
-            nx2ax(nx_graph, ax, seed=42)
+            nx2ax(nx_graph, ax, seed=42, show_weights=True)
 
             # Highlight the path if found
             if path:

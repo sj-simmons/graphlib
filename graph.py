@@ -166,7 +166,55 @@ class UndirectedGraph_:
 T = TypeVar("T", bound="UndirectedGraph_")
 
 
-def watts_strogatz(
+def complete_(
+    graph: T,
+    n: int = 10,
+    weight_range: Tuple[Union[int, float], Union[int, float]] = (1, 10),
+    seed: Optional[int] = None,
+) -> T:
+    """
+    Generate a complete graph with n nodes (K_n).
+
+    In a complete graph, every pair of distinct vertices is connected by a unique edge.
+
+    Args:
+        graph: An empty instance of a subclass of UndirectedGraph_ to populate
+        n: Number of nodes in the graph
+        weight_range: Tuple (min_weight, max_weight) for edge weights
+        seed: Random seed for reproducibility
+
+    Returns:
+        T: The populated complete graph
+
+    Raises:
+        ValueError: If parameters are invalid
+        AssertionError: If graph is not empty
+    """
+    assert len(graph) == 0, "You probably wanted to start with an empty graph!"
+
+    if n <= 0:
+        raise ValueError("n must be positive")
+    if weight_range[0] > weight_range[1]:
+        raise ValueError("min_weight must be <= max_weight")
+
+    # Initialize random number generator
+    rng = random.Random(seed)
+
+    # Add vertices
+    for i in range(n):
+        graph.add_vertex(i)
+
+    # Add edges between every pair of vertices
+    for i in range(n):
+        for j in range(i + 1, n):
+            # Generate random weight within the specified range
+            weight = round(rng.uniform(weight_range[0], weight_range[1]), 2)
+            graph.add_edge(i, j, weight)
+
+    return graph
+
+
+def watts_strogatz_(
     graph: T,
     n: int = 20,
     k: int = 4,
@@ -371,12 +419,10 @@ try:
 
         return nx_graph
 
-    def nx2ax(nx_graph: "nx.Graph", ax, seed=None):
+    def nx2ax(nx_graph: "nx.Graph", ax, seed=42, show_weights: bool = True):
 
         # Create a layout for the nodes
         pos = nx.spring_layout(nx_graph, seed=seed)
-
-        edge_labels = nx.get_edge_attributes(nx_graph, "weight")
 
         # Plot graph
         nx.draw(
@@ -385,7 +431,7 @@ try:
             ax=ax,
             with_labels=True,
             node_color="lightgray",
-            node_size=(500 + max(len(str(node)) for node in list(nx_graph)) * 100,),
+            node_size=500 + max(len(str(node)) for node in list(nx_graph)) * 100,
             font_size=10,
             font_weight="bold",
             edge_color="gray",
@@ -393,13 +439,25 @@ try:
             edgecolors="black",
         )
 
-        # Draw edge labels (weights)
-        edge_labels = nx.get_edge_attributes(nx_graph, "weight")
-        for key in edge_labels.keys():
-            edge_labels[key] = round(edge_labels[key], 1)
-        nx.draw_networkx_edge_labels(
-            nx_graph, pos, edge_labels=edge_labels, font_size=10
-        )
+        # Draw edge labels (weights) if requested
+        if show_weights:
+            edge_labels = nx.get_edge_attributes(nx_graph, "weight")
+            # Format weights to 1 decimal place for cleaner display
+            formatted_edge_labels = {}
+            for (u, v), weight in edge_labels.items():
+                if isinstance(weight, int):
+                    formatted_edge_labels[(u, v)] = f"{weight:.1f}"
+                else:
+                    formatted_edge_labels[(u, v)] = f"{weight}"
+            nx.draw_networkx_edge_labels(
+                nx_graph,
+                pos,
+                ax=ax,
+                edge_labels=formatted_edge_labels,
+                font_size=10,
+                font_color="firebrick",
+                bbox=dict(alpha=0.7, facecolor="white", edgecolor="none"),
+            )
 
 except ImportError as e:
     print(f"Required GUI visualization libraries not found: {e}")
@@ -409,41 +467,47 @@ except ImportError as e:
 
 if __name__ == "__main__":
 
+    # Test complete graph
+    print("Testing complete graph:")
+    graph = complete_(UndirectedGraph_(), n=8)
+    print(f"Complete graph K_8: {len(graph)} vertices, {len(graph.get_edges())} edges")
+    print(f"Expected edges for K_8: {8 * 7 // 2} (n*(n-1)/2)")
+
+    if HAS_NX_MPL:
+        fig, axes = plt.subplots(1, 3, figsize=(24, 8))
+
+        # Complete graph
+        ax1 = axes[0]
+        nx2ax(graph2nx(graph), ax1, seed=42, show_weights=True)
+        ax1.set_title("Complete Graph K_8 (showing edge weights)")
+        ax1.axis("off")
+
+    # Test 20-node graph
     graph = twenty_(UndirectedGraph_())
-
-    print(graph)
-    print(graph.graph)
-
-    print("\nGraph Information:")
+    print("\nGraph Information for 20-node graph:")
     print(f"Number of vertices: {len(graph)}")
     print(f"Number of edges: {len(graph.get_edges())}")
 
     if HAS_NX_MPL:
+        # 20-node graph
+        ax2 = axes[1]
+        nx2ax(graph2nx(graph), ax2, seed=42, show_weights=True)
+        ax2.set_title("20-node Graph (showing edge weights)")
+        ax2.axis("off")
 
-        # plt.figure(figsize=(12, 8))
-        fig, ax = plt.subplots(figsize=(12, 8))
-
-        nx2ax(graph2nx(graph), ax)
-
-        plt.title("A 20-node Graph")
-        plt.axis("off")
-        plt.tight_layout()
-        plt.show()
-
-    n, k = 40, 6
-    graph = watts_strogatz(UndirectedGraph_(), n=n, k=k)
-
-    print("\nGraph Information:")
+    # Test Watts-Strogatz graph
+    n, k = 24, 6
+    graph = watts_strogatz_(UndirectedGraph_(), n=n, k=k)
+    print(f"\nWatts-Strogatz graph (n={n}, k={k}):")
     print(f"Number of vertices: {len(graph)}")
     print(f"Number of edges: {len(graph.get_edges())}")
 
     if HAS_NX_MPL:
+        # Watts-Strogatz graph
+        ax3 = axes[2]
+        nx2ax(graph2nx(graph), ax3, seed=42, show_weights=True)
+        ax3.set_title(f"Watts-Strogatz (n={n}, k={k}) (showing edge weights)")
+        ax3.axis("off")
 
-        fig, ax = plt.subplots(figsize=(12, 8))
-
-        nx2ax(graph2nx(graph), ax)
-
-        plt.title(f"A Watts-Strogatz network (n={n}, k={k})")
-        plt.axis("off")
         plt.tight_layout()
         plt.show()
