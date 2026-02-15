@@ -162,35 +162,11 @@ class UndirectedGraph_:
         """
         return len(self.graph)
 
-    def to_networkx(self) -> "nx.Graph":
-        """
-        Convert this UndirectedGraph to a networkx.Graph object.
 
-        Returns:
-            networkx.Graph: A networkx graph representation
-        """
-        import networkx as nx
-
-        nx_graph = nx.Graph()
-
-        # Add all vertices
-        for vertex in self.graph:
-            nx_graph.add_node(vertex)
-
-        # Add all edges with weights
-        for vertex in self.graph:
-            for neighbor, weight in self.graph[vertex].items():
-                # Add edge only once (undirected)
-                if not nx_graph.has_edge(vertex, neighbor):
-                    nx_graph.add_edge(vertex, neighbor, weight=weight)
-
-        return nx_graph
+T = TypeVar("T", bound="UndirectedGraph_")
 
 
-T = TypeVar("T", bound=UndirectedGraph_)
-
-
-def twenty_(graph: T, weighted: bool = True) -> T:
+def twenty_(graph: T, weighted: bool = True, more_edges: bool = True) -> T:
 
     assert len(graph) == 0, "You probably wanted to start with an empty graph!"
 
@@ -226,7 +202,7 @@ def twenty_(graph: T, weighted: bool = True) -> T:
     graph.add_edge("N11", "N19", random.randint(15, 25) if weighted else 1)
 
     # Add cross-connections to make it more complex
-    if weighted:
+    if more_edges:
         graph.add_edge("N4", "N12", random.randint(5, 15) if weighted else 1)
         graph.add_edge("N12", "N13", random.randint(5, 15) if weighted else 1)
         graph.add_edge("N13", "N19", random.randint(30, 40) if weighted else 1)
@@ -254,6 +230,66 @@ def twenty_(graph: T, weighted: bool = True) -> T:
     return graph
 
 
+HAS_NX_MPL = True
+try:
+    import matplotlib.pyplot as plt
+    import networkx as nx
+
+    def graph2nx(graph: T) -> "nx.Graph":
+        """
+        Convert a (subclass of) UndirectedGraph to a networkx.Graph object.
+
+        Returns:
+            networkx.Graph: A networkx graph representation
+        """
+
+        nx_graph = nx.Graph()
+
+        # Add all vertices
+        for vertex in graph.graph:
+            nx_graph.add_node(vertex)
+
+        # Add all edges with weights
+        for vertex in graph.graph:
+            for neighbor, weight in graph.graph[vertex].items():
+                # Add edge only once (undirected)
+                if not nx_graph.has_edge(vertex, neighbor):
+                    nx_graph.add_edge(vertex, neighbor, weight=weight)
+
+        return nx_graph
+
+    def nx2ax(nx_graph: "nx.Graph", ax, seed=None):
+
+        # Create a layout for the nodes
+        pos = nx.spring_layout(nx_graph, seed=seed)
+
+        # Plot graph
+        nx.draw(
+            nx_graph,
+            pos,
+            ax=ax,
+            with_labels=True,
+            node_color="lightgray",
+            node_size=700,
+            font_size=10,
+            font_weight="bold",
+            edge_color="gray",
+            width=2,
+            edgecolors="black",
+        )
+
+        # Draw edge labels (weights)
+        edge_labels = nx.get_edge_attributes(nx_graph, "weight")
+        nx.draw_networkx_edge_labels(
+            nx_graph, pos, edge_labels=edge_labels, font_size=10
+        )
+
+except ImportError as e:
+    print(f"Required GUI visualization libraries not found: {e}")
+    print("\nPlease consider installing these libraries:")
+    print("pip install matplotlib networkx")
+    HAS_NX_MPL = False
+
 if __name__ == "__main__":
 
     graph = twenty_(UndirectedGraph_())
@@ -261,46 +297,18 @@ if __name__ == "__main__":
     print(graph)
     print(graph.graph)
 
-    try:
-        import matplotlib.pyplot as plt
-        import networkx as nx
+    print("\nGraph Information:")
+    print(f"Number of vertices: {len(graph)}")
+    print(f"Number of edges: {len(graph.get_edges())}")
 
-        # Convert our graph to networkx format
-        nx_graph = graph.to_networkx()
+    if HAS_NX_MPL:
 
-        # Create a layout for the nodes
-        pos = nx.spring_layout(nx_graph, seed=42)  # Fixed seed for reproducibility
+        # plt.figure(figsize=(12, 8))
+        fig, ax = plt.subplots(figsize=(12, 8))
 
-        # Draw the graph
-        plt.figure(figsize=(12, 8))
+        nx2ax(graph2nx(graph), ax)
 
-        # Draw nodes
-        nx.draw_networkx_nodes(nx_graph, pos, node_size=500, node_color="lightblue")
-
-        # Draw edges with weights
-        nx.draw_networkx_edges(nx_graph, pos, width=2, alpha=0.7, edge_color="gray")
-
-        # Draw node labels
-        nx.draw_networkx_labels(nx_graph, pos, font_size=10, font_weight="bold")
-
-        # Draw edge labels (weights)
-        edge_labels = nx.get_edge_attributes(nx_graph, "weight")
-        nx.draw_networkx_edge_labels(
-            nx_graph, pos, edge_labels=edge_labels, font_size=8
-        )
-
-        # Display the plot
         plt.title("A 20-node Graph")
         plt.axis("off")
         plt.tight_layout()
         plt.show()
-
-        # Also print some basic information
-        print("\nGraph Information:")
-        print(f"Number of vertices: {len(graph)}")
-        print(f"Number of edges: {len(graph.get_edges())}")
-
-    except ImportError as e:
-        print(f"Required GUI visualization libraries not found: {e}")
-        print("\nPlease consider installing these libraries:")
-        print("pip install matplotlib networkx")
