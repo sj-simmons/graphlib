@@ -432,7 +432,7 @@ try:
             ax=ax,
             with_labels=True,
             node_color="lightgray",
-            node_size=500 + max(len(str(node)) for node in list(nx_graph)) * 100,
+            node_size=400 + max(len(str(node)) for node in list(nx_graph)) * 100,
             font_size=10,
             font_weight="bold",
             edge_color="gray",
@@ -482,7 +482,7 @@ if __name__ == "__main__":
         # Complete graph
         ax1 = axes[0]
         nx2ax(graph2nx(graph), ax1, seed=42, show_weights=True)
-        ax1.set_title("Complete Graph K_8 (showing edge weights)")
+        ax1.set_title("Complete Graph K_8")
         ax1.axis("off")
 
     # Test 20-node graph
@@ -495,7 +495,7 @@ if __name__ == "__main__":
         # 20-node graph
         ax2 = axes[1]
         nx2ax(graph2nx(graph), ax2, seed=42, show_weights=True)
-        ax2.set_title("20-node Graph (showing edge weights)")
+        ax2.set_title("20-node Graph")
         ax2.axis("off")
 
     # Test Watts-Strogatz graph
@@ -509,7 +509,7 @@ if __name__ == "__main__":
         # Watts-Strogatz graph
         ax3 = axes[2]
         nx2ax(graph2nx(graph), ax3, seed=42, show_weights=True)
-        ax3.set_title(f"Watts-Strogatz (n={n}, k={k}) (showing edge weights)")
+        ax3.set_title(f"Watts-Strogatz (n={n}, k={k})")
         ax3.axis("off")
 
         plt.tight_layout()
