@@ -230,10 +230,8 @@ class UndirectedGraph(UndirectedGraph_):
 
 
 if __name__ == "__main__":
-    # Import the same function used in search.py to create the example graph
-    from graph import twenty_
+    from graph import twenty_, graph2nx, nx2ax, HAS_NX_MPL
 
-    # Create the same graph as in search.py
     graph = twenty_(UndirectedGraph())
 
     # Get DFS and BFS trees
@@ -241,38 +239,16 @@ if __name__ == "__main__":
     dfs_tree = graph.dfs_tree(start_vertex)
     bfs_tree = graph.bfs_tree(start_vertex)
 
-    # Visualize if matplotlib and networkx are available
-    has_viz_libs = True
-    try:
-        import matplotlib.pyplot as plt
-        import networkx as nx
-
-    except ImportError as e:
-        print(f"\nVisualization libraries not available: {e}")
-        print("To visualize the trees, install matplotlib and networkx:")
-        print("pip install matplotlib networkx")
-        has_viz_libs = False
-
     print("Original graph (20-node example):")
     print(graph)
 
-    # Demonstrate dfs_tree
-    if not has_viz_libs:
-        print("\n" + "=" * 50)
-        print(f"DFS Tree starting from {start_vertex}:")
-        print(dfs_tree)
-
-    # Print some statistics about the DFS tree
+    # Print statistics about the DFS tree
+    print(f"\nDFS Tree starting from {start_vertex}:")
     print(f"DFS Tree vertices: {len(dfs_tree)}")
     print(f"DFS Tree edges: {len(dfs_tree.get_edges())}")
 
-    # Demonstrate bfs_tree
-    if not has_viz_libs:
-        print("\n" + "=" * 50)
-        print(f"BFS Tree starting from {start_vertex}:")
-        print(bfs_tree)
-
-    # Print some statistics about the BFS tree
+    # Print statistics about the BFS tree
+    print(f"\nBFS Tree starting from {start_vertex}:")
     print(f"BFS Tree vertices: {len(bfs_tree)}")
     print(f"BFS Tree edges: {len(bfs_tree.get_edges())}")
 
@@ -285,6 +261,28 @@ if __name__ == "__main__":
     print(f"DFS Tree number of vertices: {len(dfs_tree)}")
     print(f"BFS Tree number of vertices: {len(bfs_tree)}")
 
+    # Helper function to check reachability
+    def get_reachable_vertices(graph, start_vertex):
+        """Get all vertices reachable from start_vertex using DFS."""
+        reachable = set()
+        stack = [start_vertex]
+        visited = set([start_vertex])
+        while stack:
+            current = stack.pop()
+            reachable.add(current)
+            for neighbor in graph.get_neighbors(current):
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    stack.append(neighbor)
+        return reachable
+
+    # Get reachable vertices
+    reachable_from_start = get_reachable_vertices(graph, start_vertex)
+    all_vertices = graph.get_vertices()
+
+    print(f"\nTotal vertices in original graph: {len(all_vertices)}")
+    print(f"Vertices reachable from {start_vertex}: {len(reachable_from_start)}")
+
     # Test Prim's MST
     print("\n" + "=" * 50)
     print("Testing Prim's Minimum Spanning Tree:")
@@ -292,32 +290,10 @@ if __name__ == "__main__":
         mst = graph.prim_mst(start_vertex)
         print(f"MST vertices: {len(mst)}")
         print(f"MST edges: {len(mst.get_edges())}")
-        print("MST edges with weights:")
-        for u, v, w in mst.get_edges():
-            print(f"  {u} -- {v} : {w}")
 
         # Calculate total weight of MST
         total_weight = sum(w for _, _, w in mst.get_edges())
-        print(f"Total MST weight: {total_weight}")
-
-        # Check if all vertices are reachable in the original graph
-        all_vertices = graph.get_vertices()
-        reachable_from_start = set()
-
-        # Simple reachability check using DFS
-        stack = [start_vertex]
-        visited = set([start_vertex])
-        while stack:
-            current = stack.pop()
-            reachable_from_start.add(current)
-            for neighbor in graph.get_neighbors(current):
-                if neighbor not in visited:
-                    visited.add(neighbor)
-                    stack.append(neighbor)
-
-        print(f"\nTotal vertices in original graph: {len(all_vertices)}")
-        print(f"Vertices reachable from {start_vertex}: {len(reachable_from_start)}")
-        print(f"MST includes {len(mst)} vertices")
+        print(f"Total MST weight: {total_weight:.2f}")
 
         # If MST includes all reachable vertices, it's valid
         if len(mst) == len(reachable_from_start):
@@ -337,13 +313,10 @@ if __name__ == "__main__":
         spt_tree = graph.spt(start_vertex)
         print(f"SPT vertices: {len(spt_tree)}")
         print(f"SPT edges: {len(spt_tree.get_edges())}")
-        print("SPT edges with weights:")
-        for u, v, w in spt_tree.get_edges():
-            print(f"  {u} -- {v} : {w}")
 
         # Calculate total weight of SPT
         total_spt_weight = sum(w for _, _, w in spt_tree.get_edges())
-        print(f"Total SPT weight: {total_spt_weight}")
+        print(f"Total SPT weight: {total_spt_weight:.2f}")
 
         print(f"\nSPT includes {len(spt_tree)} vertices")
         if len(spt_tree) == len(reachable_from_start):
@@ -356,247 +329,135 @@ if __name__ == "__main__":
     except ValueError as e:
         print(f"Error computing SPT: {e}")
 
-    # Check if all vertices are reachable
-    all_vertices = graph.get_vertices()
-    reachable_from_start = set()
+    if HAS_NX_MPL:
+        import matplotlib.pyplot as plt
+        import networkx as nx
 
-    # Simple reachability check using DFS
-    stack = [start_vertex]
-    visited = set([start_vertex])
-    while stack:
-        current = stack.pop()
-        reachable_from_start.add(current)
-        for neighbor in graph.get_neighbors(current):
-            if neighbor not in visited:
-                visited.add(neighbor)
-                stack.append(neighbor)
-
-    print(f"\nTotal vertices in original graph: {len(all_vertices)}")
-    print(f"Vertices reachable from {start_vertex}: {len(reachable_from_start)}")
-
-    if has_viz_libs:
-
-        # Create a figure to display original graph, DFS tree, and BFS tree
-        fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+        # Create Figure 1: Original graph, DFS tree, and BFS tree in one row
+        fig1, axes1 = plt.subplots(1, 3, figsize=(18, 6))
 
         # Convert graphs to networkx for visualization
-        nx_original = graph.to_networkx()
-        nx_dfs = dfs_tree.to_networkx()
-        nx_bfs = bfs_tree.to_networkx()
+        nx_original = graph2nx(graph)
+        nx_dfs = graph2nx(dfs_tree)
+        nx_bfs = graph2nx(bfs_tree)
 
-        # Use a consistent layout for all subplots
+        # Use a consistent layout for all subplots based on the original graph
         pos = nx.spring_layout(nx_original, seed=42)
 
         # Plot original graph
-        ax = axes[0]
-        nx.draw(
-            nx_original,
-            pos,
-            ax=ax,
-            with_labels=True,
-            node_color="lightgray",
-            node_size=500,
-            font_size=8,
-            font_weight="bold",
-            edge_color="gray",
-            width=1,
-        )
+        ax = axes1[0]
+        nx2ax(nx_original, ax, seed=42, show_weights=True, pos=pos)
         # Highlight start vertex
         nx.draw_networkx_nodes(
             nx_original,
             pos,
             ax=ax,
             nodelist=[start_vertex],
-            node_color="green",
+            node_color="lightsteelblue",
             node_size=700,
-        )
-        # Add edge weights to original graph
-        edge_labels_original = nx.get_edge_attributes(nx_original, "weight")
-        nx.draw_networkx_edge_labels(
-            nx_original,
-            pos,
-            ax=ax,
-            edge_labels=edge_labels_original,
-            font_size=6,
-            font_color="black",
+            edgecolors="black",
         )
         # Calculate total weight of original graph
+        edge_labels_original = nx.get_edge_attributes(nx_original, "weight")
         total_original_weight = sum(edge_labels_original.values())
-        ax.set_title(
-            f"Original Graph with Edge Weights\nTotal Weight: {total_original_weight:.2f}"
-        )
+        ax.set_title(f"Original Graph\nTotal Weight: {total_original_weight:.2f}")
 
-        # Plot DFS tree
-        ax = axes[1]
-        nx.draw(
-            nx_dfs,
-            pos,
-            ax=ax,
-            with_labels=True,
-            node_color="lightblue",
-            node_size=500,
-            font_size=8,
-            font_weight="bold",
-            edge_color="blue",
-            width=2,
-        )
+        # Plot DFS tree - use the same layout for consistency
+        ax = axes1[1]
+        nx2ax(nx_dfs, ax, seed=42, show_weights=True, pos=pos)
         # Highlight start vertex
         nx.draw_networkx_nodes(
             nx_dfs,
             pos,
             ax=ax,
             nodelist=[start_vertex],
-            node_color="green",
+            node_color="lightsteelblue",
             node_size=700,
-        )
-        # Add edge weights to DFS tree
-        edge_labels_dfs = nx.get_edge_attributes(nx_dfs, "weight")
-        nx.draw_networkx_edge_labels(
-            nx_dfs,
-            pos,
-            ax=ax,
-            edge_labels=edge_labels_dfs,
-            font_size=6,
-            font_color="darkblue",
+            edgecolors="black",
         )
         # Calculate total weight of DFS tree
+        edge_labels_dfs = nx.get_edge_attributes(nx_dfs, "weight")
         total_dfs_weight = sum(edge_labels_dfs.values())
         ax.set_title(
-            f"DFS Tree with Edge Weights\nTotal Weight: {total_dfs_weight:.2f}"
+            f"DFS Tree from {start_vertex}\nTotal Weight: {total_dfs_weight:.2f}"
         )
 
-        # Plot BFS tree
-        ax = axes[2]
-        nx.draw(
-            nx_bfs,
-            pos,
-            ax=ax,
-            with_labels=True,
-            node_color="lightcoral",
-            node_size=500,
-            font_size=8,
-            font_weight="bold",
-            edge_color="red",
-            width=2,
-        )
+        # Plot BFS tree - use the same layout for consistency
+        ax = axes1[2]
+        nx2ax(nx_bfs, ax, seed=42, show_weights=True, pos=pos)
         # Highlight start vertex
         nx.draw_networkx_nodes(
             nx_bfs,
             pos,
             ax=ax,
             nodelist=[start_vertex],
-            node_color="green",
+            node_color="lightsteelblue",
             node_size=700,
-        )
-        # Add edge weights to BFS tree
-        edge_labels_bfs = nx.get_edge_attributes(nx_bfs, "weight")
-        nx.draw_networkx_edge_labels(
-            nx_bfs,
-            pos,
-            ax=ax,
-            edge_labels=edge_labels_bfs,
-            font_size=6,
-            font_color="darkred",
+            edgecolors="black",
         )
         # Calculate total weight of BFS tree
+        edge_labels_bfs = nx.get_edge_attributes(nx_bfs, "weight")
         total_bfs_weight = sum(edge_labels_bfs.values())
         ax.set_title(
-            f"BFS Tree with Edge Weights\nTotal Weight: {total_bfs_weight:.2f}"
+            f"BFS Tree from {start_vertex}\nTotal Weight: {total_bfs_weight:.2f}"
         )
 
         plt.suptitle(
-            f"DFS and BFS Trees from {start_vertex}",
+            f"Tree Algorithms from {start_vertex}",
             fontsize=16,
             fontweight="bold",
         )
         plt.tight_layout()
+        plt.show()
 
-        # Create a second figure for MST and SPT
+        # Create Figure 2: MST and SPT comparison
         try:
+            # Create MST and SPT
             mst = graph.prim_mst(start_vertex)
             spt_tree = graph.spt(start_vertex)
+            nx_mst = graph2nx(mst)
+            nx_spt = graph2nx(spt_tree)
 
-            fig2, axes = plt.subplots(1, 2, figsize=(14, 6))
+            # Create a new figure for MST vs SPT comparison
+            fig2, axes2 = plt.subplots(1, 2, figsize=(14, 6))
 
-            # Convert to networkx
-            nx_mst = mst.to_networkx()
-            nx_spt = spt_tree.to_networkx()
-
-            # Plot MST
-            ax = axes[0]
-            nx.draw(
-                nx_mst,
-                pos,
-                ax=ax,
-                with_labels=True,
-                node_color="lightgreen",
-                node_size=500,
-                font_size=8,
-                font_weight="bold",
-                edge_color="darkgreen",
-                width=3,
-            )
+            # Plot MST in first subplot
+            ax1 = axes2[0]
+            nx2ax(nx_mst, ax1, seed=42, show_weights=True, pos=pos)
             # Highlight start vertex
             nx.draw_networkx_nodes(
                 nx_mst,
                 pos,
-                ax=ax,
+                ax=ax1,
                 nodelist=[start_vertex],
-                node_color="green",
+                node_color="lightsteelblue",
                 node_size=700,
-            )
-            # Add edge weights
-            edge_labels_mst = nx.get_edge_attributes(nx_mst, "weight")
-            nx.draw_networkx_edge_labels(
-                nx_mst,
-                pos,
-                ax=ax,
-                edge_labels=edge_labels_mst,
-                font_size=8,
-                font_color="darkred",
+                edgecolors="black",
             )
             # Calculate total weight of MST
+            edge_labels_mst = nx.get_edge_attributes(nx_mst, "weight")
             total_mst_weight = sum(edge_labels_mst.values())
-            ax.set_title(
+            ax1.set_title(
                 f"Prim's MST from {start_vertex}\nTotal Weight: {total_mst_weight:.2f}"
             )
 
-            # Plot SPT
-            ax = axes[1]
-            nx.draw(
-                nx_spt,
-                pos,
-                ax=ax,
-                with_labels=True,
-                node_color="lightblue",
-                node_size=500,
-                font_size=8,
-                font_weight="bold",
-                edge_color="blue",
-                width=3,
-            )
+            # Plot SPT in second subplot
+            ax2 = axes2[1]
+            nx2ax(nx_spt, ax2, seed=42, show_weights=True, pos=pos)
             # Highlight start vertex
             nx.draw_networkx_nodes(
                 nx_spt,
                 pos,
-                ax=ax,
+                ax=ax2,
                 nodelist=[start_vertex],
-                node_color="green",
+                node_color="lightsteelblue",
                 node_size=700,
-            )
-            # Add edge weights
-            edge_labels_spt = nx.get_edge_attributes(nx_spt, "weight")
-            nx.draw_networkx_edge_labels(
-                nx_spt,
-                pos,
-                ax=ax,
-                edge_labels=edge_labels_spt,
-                font_size=8,
-                font_color="darkblue",
+                edgecolors="black",
             )
             # Calculate total weight of SPT
+            edge_labels_spt = nx.get_edge_attributes(nx_spt, "weight")
             total_spt_weight = sum(edge_labels_spt.values())
-            ax.set_title(
+            ax2.set_title(
                 f"Shortest Path Tree from {start_vertex}\nTotal Weight: {total_spt_weight:.2f}"
             )
 
@@ -607,6 +468,6 @@ if __name__ == "__main__":
             )
             plt.tight_layout()
             plt.show()
+
         except Exception as e:
-            print(f"\nCould not visualize MST or SPT: {e}")
-            plt.show()
+            print(f"\nCould not create MST vs SPT comparison figure: {e}")

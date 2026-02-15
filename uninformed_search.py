@@ -180,9 +180,7 @@ class UndirectedGraph(graph.UndirectedGraph_):
 
         return None, 0
 
-    def all_simple_paths(
-        self, start_vertex: Any, goal_vertex: Any
-    ) -> List[List[Any]]:
+    def all_simple_paths(self, start_vertex: Any, goal_vertex: Any) -> List[List[Any]]:
         """
         Find all simple paths (paths without cycles) from start_vertex to goal_vertex
         using iterative depth-first search (DFS).
@@ -233,13 +231,14 @@ class UndirectedGraph(graph.UndirectedGraph_):
 
         return all_paths
 
+
 if __name__ == "__main__":
 
     from graph import twenty_, graph2nx, nx2ax, HAS_NX_MPL, watts_strogatz_
 
     # graph = twenty_(UndirectedGraph())
     n = 30
-    graph = watts_strogatz_(UndirectedGraph(), n=n, k=6)
+    graph = watts_strogatz_(UndirectedGraph(), n=n, k=4)
 
     print(graph)
 
@@ -282,8 +281,8 @@ if __name__ == "__main__":
         for i, (algo_name, (path, total_weight)) in enumerate(algorithms):
             ax = axes[i]
 
-            # Draw the base graph using nx2ax from graph.py
-            nx2ax(nx_graph, ax, seed=42, show_weights=True)
+            # Draw the base graph using nx2ax from graph.py with the precomputed layout
+            nx2ax(nx_graph, ax, seed=42, show_weights=True, pos=pos)
 
             # Highlight the path if found
             if path:

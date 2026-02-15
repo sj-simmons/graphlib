@@ -87,6 +87,7 @@ if __name__ == "__main__":
 
     # Run uninformed searches for comparison
     from uninformed_search import UndirectedGraph as UninformedGraph
+
     uninformed_graph = twenty_(UninformedGraph())
     dfs_path, dfs_weight = uninformed_graph.dfs(start_vertex, goal_vertex)
     bfs_path, bfs_weight = uninformed_graph.bfs(start_vertex, goal_vertex)
@@ -139,8 +140,8 @@ if __name__ == "__main__":
         for i, (algo_name, path, total_weight) in enumerate(all_algorithms):
             ax = flat_axes[i]
 
-            # Draw the base graph using nx2ax from graph.py
-            nx2ax(nx_graph, ax, seed=42, show_weights=True)
+            # Draw the base graph using nx2ax from graph.py with the precomputed layout
+            nx2ax(nx_graph, ax, seed=42, show_weights=True, pos=pos)
 
             # Highlight the path if found
             if path:

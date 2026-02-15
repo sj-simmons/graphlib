@@ -419,10 +419,11 @@ try:
 
         return nx_graph
 
-    def nx2ax(nx_graph: "nx.Graph", ax, seed=42, show_weights: bool = True):
+    def nx2ax(nx_graph: "nx.Graph", ax, seed=42, show_weights: bool = True, pos=None):
 
-        # Create a layout for the nodes
-        pos = nx.spring_layout(nx_graph, seed=seed)
+        # Create a layout for the nodes if not provided
+        if pos is None:
+            pos = nx.spring_layout(nx_graph, seed=seed)
 
         # Plot graph
         nx.draw(
@@ -458,6 +459,8 @@ try:
                 font_color="firebrick",
                 bbox=dict(alpha=0.7, facecolor="white", edgecolor="none"),
             )
+
+        return pos
 
 except ImportError as e:
     print(f"Required GUI visualization libraries not found: {e}")
