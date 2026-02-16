@@ -85,7 +85,9 @@ class UndirectedGraph(uninformed_search.UndirectedGraph):
         g_score = {start_vertex: 0}
         f_score = {start_vertex: heuristic.get(start_vertex, float("inf"))}
 
-        frontier = [(f_score[start_vertex], g_score[start_vertex], start_vertex, [start_vertex])]
+        frontier = [
+            (f_score[start_vertex], g_score[start_vertex], start_vertex, [start_vertex])
+        ]
         visited = set()
 
         while frontier:
@@ -111,10 +113,17 @@ class UndirectedGraph(uninformed_search.UndirectedGraph):
                     # If this path to neighbor is better than any previous one
                     if neighbor not in g_score or tentative_g < g_score[neighbor]:
                         g_score[neighbor] = tentative_g
-                        f_score[neighbor] = tentative_g + heuristic.get(neighbor, float("inf"))
+                        f_score[neighbor] = tentative_g + heuristic.get(
+                            neighbor, float("inf")
+                        )
                         heapq.heappush(
                             frontier,
-                            (f_score[neighbor], tentative_g, neighbor, path + [neighbor])
+                            (
+                                f_score[neighbor],
+                                tentative_g,
+                                neighbor,
+                                path + [neighbor],
+                            ),
                         )
 
         return None, 0
@@ -122,24 +131,24 @@ class UndirectedGraph(uninformed_search.UndirectedGraph):
 
 if __name__ == "__main__":
 
-    from graph import twenty_, graph2nx, nx2ax, HAS_NX_MPL
+    from graph import watts_strogatz_, graph2nx, nx2ax, HAS_NX_MPL
 
-    graph = twenty_(UndirectedGraph())
+    n, k = 22, 4
+    graph = watts_strogatz_(UndirectedGraph(), n=n, k=k)
 
     print(graph)
 
     # Define start and goal vertices
-    start_vertex = "N0"
-    goal_vertex = "N19"
+    start_vertex = 0
+    goal_vertex = n // 2 - 1
 
     # Create a simple heuristic (straight-line distance approximation)
     # For the 20-node graph, we'll use a simple heuristic based on node indices
     heuristic = {}
-    for i in range(20):
-        node = f"N{i}"
+    for node in range(k):
         # Simple heuristic: distance based on node number difference
         # This is just for demonstration purposes
-        heuristic[node] = abs(i - 19) * 5
+        heuristic[node] = abs(node - goal_vertex)
 
     # Run greedy search
     greedy_path, greedy_weight = graph.greedy(start_vertex, goal_vertex, heuristic)
@@ -190,7 +199,7 @@ if __name__ == "__main__":
         flat_axes = axes.flatten()
 
         # Hide the last subplot (6th) since we only have 5 algorithms
-        flat_axes[-1].axis('off')
+        flat_axes[-1].axis("off")
 
         all_algorithms = [
             ("DFS", dfs_path, dfs_weight),
@@ -217,7 +226,7 @@ if __name__ == "__main__":
                     edgelist=path_edges,
                     edge_color="steelblue",
                     width=3,
-                    alpha=.5,
+                    alpha=0.5,
                 )
                 # Highlight path nodes
                 nx.draw_networkx_nodes(
