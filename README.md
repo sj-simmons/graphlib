@@ -20,10 +20,16 @@ This project implements an undirected graph data structure with search algorithm
 - `__str__()` - String representation
 - `__repr__()` - Representation
 - `__len__()` - Number of vertices
-- `to_networkx()` - Convert to networkx.Graph object
 
-**Helper function:**
-- `twenty_(graph, weighted=True)` - Create a 20-node test graph with random weights
+**Graph generation functions:**
+- `complete_(graph, n=10, weight_range=(1, 10), seed=None)` - Generate a complete graph K_n
+- `watts_strogatz_(graph, n=20, k=4, beta=0.3, weight_range=(1, 10), seed=None)` - Generate a Watts-Strogatz small-world graph
+- `twenty_(graph, weighted=True, more_edges=True)` - Create a 20-node test graph with multiple paths
+
+**Visualization functions:**
+- `graph2nx(graph)` - Convert UndirectedGraph to networkx.Graph object
+- `nx2ax(nx_graph, ax, seed=42, show_weights=True, pos=None)` - Draw networkx graph on matplotlib axis
+- `HAS_NX_MPL` - Boolean flag indicating if matplotlib and networkx are available
 
 ### uninformed_search.py
 
@@ -33,12 +39,14 @@ This project implements an undirected graph data structure with search algorithm
 - `bfs(start_vertex, goal_vertex)` - Breadth-First Search
 - `ucs_(start_vertex, goal_vertex)` - Uniform Cost Search (basic implementation)
 - `ucs(start_vertex, goal_vertex)` - Uniform Cost Search (optimized implementation)
+- `all_simple_paths(start_vertex, goal_vertex)` - Find all simple paths between vertices
 
 ### informed_search.py
 
 **UndirectedGraph class** - Extends UndirectedGraph_ with informed search algorithms
 - Inherits all methods from UndirectedGraph_
-- `greedy(start_vertex, goal_vertex, heuristic)` - Greedy best-first search (similar to greedy_search in uninformed_search.py)
+- `greedy(start_vertex, goal_vertex, heuristic)` - Greedy best-first search using heuristic estimates
+- `astar(start_vertex, goal_vertex, heuristic)` - A* search algorithm using f(n) = g(n) + h(n)
 
 ### tree.py
 
@@ -49,23 +57,31 @@ This project implements an undirected graph data structure with search algorithm
 - `prim_mst(start_vertex=None)` - Find Minimum Spanning Tree using Prim's algorithm
 - `spt(start_vertex=None)` - Find Shortest Path Tree using Dijkstra's algorithm
 
-### demo.py
+### LArider.py
 
-**Visualization functions** - Demonstrate graph visualization using matplotlib and networkx
-- `visualize_graph()` - Create 2x2 subplot visualization with different layouts
-- `save_visualization()` - Save visualization to file
-- `simple_visualization()` - Simple one-plot visualization
+**LA Cities Transportation Network** - A practical example using the graph search algorithms
+- Creates a graph of LA cities with real-world distances
+- Demonstrates greedy search with heuristic distances to Silver Lake
+- Includes visualization of the transportation network
+- Shows path finding in a real-world scenario
+
+### tests.py
+
+**Test suite** - Automated tests for graph algorithms
+- Tests `all_simple_paths()` method against networkx implementation
+- Validates graph generation functions (complete, Watts-Strogatz, 20-node)
+- Ensures algorithm correctness through comparison with established library
 
 ## Usage
-
-Run `demo.py` to see interactive visualization options:
-```bash
-python demo.py
-```
 
 Run `uninformed_search.py` directly to see search algorithm comparisons:
 ```bash
 python uninformed_search.py
+```
+
+Run `informed_search.py` directly to see informed search algorithm comparisons:
+```bash
+python informed_search.py
 ```
 
 Run `tree.py` directly to see tree algorithm demonstrations:
@@ -77,6 +93,20 @@ Run `graph.py` directly to see basic graph visualization:
 ```bash
 python graph.py
 ```
+
+Run `LArider.py` to see the LA cities transportation network example:
+```bash
+python LArider.py
+```
+
+## Testing
+
+Run the test suite to verify algorithm correctness:
+```bash
+python tests.py
+```
+
+The tests compare the implementation against networkx for validation.
 
 ## Dependencies
 
@@ -94,15 +124,16 @@ The project includes a 20-node test graph with weighted edges to demonstrate dif
 - DFS tends to explore deep paths
 - BFS finds shortest path by number of edges
 - UCS finds minimum weight path
+- Greedy search uses heuristic estimates to guide search
+- A* search combines actual cost and heuristic estimates
 - Prim's algorithm finds Minimum Spanning Tree
 - Dijkstra's algorithm finds Shortest Path Tree
-- Greedy search uses heuristics to guide search
 
 ## Class Hierarchy
 
 All `UndirectedGraph` classes in different files inherit from the base `UndirectedGraph_` class in `graph.py`:
-- `uninformed_search.UndirectedGraph` adds search algorithms
-- `informed_search.UndirectedGraph` adds informed search
-- `tree.UndirectedGraph` adds tree algorithms
+- `uninformed_search.UndirectedGraph` adds uninformed search algorithms (DFS, BFS, UCS)
+- `informed_search.UndirectedGraph` adds informed search algorithms (Greedy, A*)
+- `tree.UndirectedGraph` adds tree algorithms (DFS tree, BFS tree, Prim's MST, Shortest Path Tree)
 
 Each extension provides specialized functionality while maintaining the core graph operations.
