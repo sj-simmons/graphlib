@@ -295,6 +295,7 @@ if __name__ == "__main__":
                     edgelist=path_edges,
                     edge_color="steelblue",
                     width=3,
+                    alpha=.5,
                 )
                 # Highlight path nodes
                 nx.draw_networkx_nodes(

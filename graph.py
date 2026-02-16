@@ -447,15 +447,15 @@ try:
             formatted_edge_labels = {}
             for (u, v), weight in edge_labels.items():
                 if isinstance(weight, int):
-                    formatted_edge_labels[(u, v)] = f"{weight:.1f}"
-                else:
                     formatted_edge_labels[(u, v)] = f"{weight}"
+                else:
+                    formatted_edge_labels[(u, v)] = f"{weight:.1f}"
             nx.draw_networkx_edge_labels(
                 nx_graph,
                 pos,
                 ax=ax,
                 edge_labels=formatted_edge_labels,
-                font_size=10,
+                font_size=12,
                 font_color="firebrick",
                 bbox=dict(alpha=0.7, facecolor="white", edgecolor="none"),
             )

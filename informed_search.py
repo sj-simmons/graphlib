@@ -60,6 +60,65 @@ class UndirectedGraph(graph.UndirectedGraph_):
 
         return None, 0
 
+    def astar(self, start_vertex, goal_vertex, heuristic):
+        """
+        Find a path from start_vertex to goal_vertex using A* search algorithm.
+        Expands nodes based on f(n) = g(n) + h(n), where:
+        - g(n) is the actual cost from start to current node
+        - h(n) is the heuristic estimate from current node to goal
+
+        Args:
+            start_vertex: Starting vertex for the path
+            goal_vertex: Goal vertex to reach
+            heuristic: A dictionary mapping vertex names to estimated distances to the goal
+
+        Returns:
+            tuple: (path, total_weight) where path is a list of vertices from start to goal,
+                   and total_weight is the sum of edge weights along the found path.
+                   Returns (None, 0) if no path exists.
+        """
+        if not self.has_vertex(start_vertex) or not self.has_vertex(goal_vertex):
+            return None, 0
+
+        # Priority queue: (f_score, g_score, vertex, path)
+        # f_score = g_score + heuristic
+        g_score = {start_vertex: 0}
+        f_score = {start_vertex: heuristic.get(start_vertex, float("inf"))}
+
+        frontier = [(f_score[start_vertex], g_score[start_vertex], start_vertex, [start_vertex])]
+        visited = set()
+
+        while frontier:
+            _, current_g, current_vertex, path = heapq.heappop(frontier)
+
+            # Skip if we've already visited this vertex with a better g_score
+            if current_vertex in visited:
+                continue
+
+            # Mark as visited
+            visited.add(current_vertex)
+
+            # Check if we found the goal
+            if current_vertex == goal_vertex:
+                return path, current_g
+
+            # Explore neighbors
+            for neighbor, edge_weight in self.graph[current_vertex].items():
+                if neighbor not in visited:
+                    # Calculate tentative g_score for neighbor
+                    tentative_g = current_g + edge_weight
+
+                    # If this path to neighbor is better than any previous one
+                    if neighbor not in g_score or tentative_g < g_score[neighbor]:
+                        g_score[neighbor] = tentative_g
+                        f_score[neighbor] = tentative_g + heuristic.get(neighbor, float("inf"))
+                        heapq.heappush(
+                            frontier,
+                            (f_score[neighbor], tentative_g, neighbor, path + [neighbor])
+                        )
+
+        return None, 0
+
 
 if __name__ == "__main__":
 
@@ -84,6 +143,8 @@ if __name__ == "__main__":
 
     # Run greedy search
     greedy_path, greedy_weight = graph.greedy(start_vertex, goal_vertex, heuristic)
+    # Run A* search
+    astar_path, astar_weight = graph.astar(start_vertex, goal_vertex, heuristic)
 
     # Run uninformed searches for comparison
     from uninformed_search import UndirectedGraph as UninformedGraph
@@ -105,6 +166,7 @@ if __name__ == "__main__":
         ("BFS", bfs_path, bfs_weight),
         ("UCS", ucs_path, ucs_weight),
         ("Greedy", greedy_path, greedy_weight),
+        ("A*", astar_path, astar_weight),
     ]
 
     for algo_name, path, total_weight in algorithms:
@@ -118,23 +180,27 @@ if __name__ == "__main__":
         import matplotlib.pyplot as plt
         import networkx as nx
 
-        # Create a figure to display all search paths
-        fig, axes = plt.subplots(2, 2, figsize=(16, 12))
-
         # Convert the graph to networkx for visualization using graph.py's function
         nx_graph = graph2nx(graph)
 
         # Use a consistent layout for all subplots
         pos = nx.spring_layout(nx_graph, seed=42)
 
+        # Create a figure to display all search paths (2x3 grid for 5 algorithms)
+        fig, axes = plt.subplots(2, 3, figsize=(18, 12))
+
         # Flatten axes for easier iteration
         flat_axes = axes.flatten()
+
+        # Hide the last subplot (6th) since we only have 5 algorithms
+        flat_axes[-1].axis('off')
 
         all_algorithms = [
             ("DFS", dfs_path, dfs_weight),
             ("BFS", bfs_path, bfs_weight),
             ("UCS", ucs_path, ucs_weight),
             ("Greedy", greedy_path, greedy_weight),
+            ("A*", astar_path, astar_weight),
         ]
 
         for i, (algo_name, path, total_weight) in enumerate(all_algorithms):
@@ -177,12 +243,6 @@ if __name__ == "__main__":
                 )
 
                 ax.set_title(f"{algo_name} Path\nTotal Weight: {total_weight:.1f}")
-
-                # Print detailed information to console
-                print(f"\n{algo_name} Details:")
-                print(f"  Path: {path}")
-                print(f"  Total weight: {total_weight:.1f}")
-                print(f"  Number of steps: {len(path)-1}")
             else:
                 ax.set_title(f"{algo_name}: No Path Found")
 
