@@ -1,10 +1,10 @@
 from collections import deque
 import heapq
-import graph
+import uninformed_search
 from typing import Any, List, Optional, Tuple, Union
 
 
-class UndirectedGraph(graph.UndirectedGraph_):
+class UndirectedGraph(uninformed_search.UndirectedGraph):
     def __init__(self) -> None:
         super().__init__()
 
@@ -147,12 +147,9 @@ if __name__ == "__main__":
     astar_path, astar_weight = graph.astar(start_vertex, goal_vertex, heuristic)
 
     # Run uninformed searches for comparison
-    from uninformed_search import UndirectedGraph as UninformedGraph
-
-    uninformed_graph = twenty_(UninformedGraph())
-    dfs_path, dfs_weight = uninformed_graph.dfs(start_vertex, goal_vertex)
-    bfs_path, bfs_weight = uninformed_graph.bfs(start_vertex, goal_vertex)
-    ucs_path, ucs_weight = uninformed_graph.ucs(start_vertex, goal_vertex)
+    dfs_path, dfs_weight = graph.dfs(start_vertex, goal_vertex)
+    bfs_path, bfs_weight = graph.bfs(start_vertex, goal_vertex)
+    ucs_path, ucs_weight = graph.ucs(start_vertex, goal_vertex)
 
     # Print a summary
     print("\n" + "=" * 50)
@@ -220,6 +217,7 @@ if __name__ == "__main__":
                     edgelist=path_edges,
                     edge_color="steelblue",
                     width=3,
+                    alpha=.5,
                 )
                 # Highlight path nodes
                 nx.draw_networkx_nodes(
