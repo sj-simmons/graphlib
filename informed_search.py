@@ -133,8 +133,8 @@ if __name__ == "__main__":
 
     from graph import watts_strogatz_, graph2nx, nx2ax, HAS_NX_MPL
 
-    n, k = 22, 4
-    graph = watts_strogatz_(UndirectedGraph(), n=n, k=k)
+    n, k = 20, 4
+    graph = watts_strogatz_(UndirectedGraph(), n=n, k=k, weight_range=(0, 20))
 
     print(graph)
 

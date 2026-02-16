@@ -455,7 +455,7 @@ try:
                 pos,
                 ax=ax,
                 edge_labels=formatted_edge_labels,
-                font_size=12,
+                font_size=10,
                 font_color="firebrick",
                 bbox=dict(alpha=0.7, facecolor="white", edgecolor="none"),
             )
