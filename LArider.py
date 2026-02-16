@@ -134,7 +134,7 @@ if __name__ == "__main__":
                 G, pos,
                 edgelist=path_edges,
                 width=5,
-                edge_color='red',
+                edge_color='firebrick',
                 alpha=0.9,
                 style='solid'
             )
