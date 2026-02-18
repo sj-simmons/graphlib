@@ -160,10 +160,10 @@ class UndirectedGraph(uninformed_search.UndirectedGraph):
         if not self.has_vertex(start_vertex) or not self.has_vertex(goal_vertex):
             # Initialize metrics even when no path exists
             efficiency_metrics = {
-                'nodes_expanded': 0,
-                'nodes_visited': 0,
-                'frontier_max_size': 0,
-                'path_length': 0
+                "nodes_expanded": 0,
+                "nodes_visited": 0,
+                "frontier_max_size": 0,
+                "path_length": 0,
             }
             return None, 0, efficiency_metrics
 
@@ -201,10 +201,10 @@ class UndirectedGraph(uninformed_search.UndirectedGraph):
             if current_vertex == goal_vertex:
                 # Calculate efficiency metrics
                 efficiency_metrics = {
-                    'nodes_expanded': nodes_expanded,
-                    'nodes_visited': nodes_visited,
-                    'frontier_max_size': frontier_max_size,
-                    'path_length': len(path)
+                    "nodes_expanded": nodes_expanded,
+                    "nodes_visited": nodes_visited,
+                    "frontier_max_size": frontier_max_size,
+                    "path_length": len(path),
                 }
                 return path, current_g, efficiency_metrics
 
@@ -232,10 +232,10 @@ class UndirectedGraph(uninformed_search.UndirectedGraph):
 
         # No path found - return metrics
         efficiency_metrics = {
-            'nodes_expanded': nodes_expanded,
-            'nodes_visited': nodes_visited,
-            'frontier_max_size': frontier_max_size,
-            'path_length': 0
+            "nodes_expanded": nodes_expanded,
+            "nodes_visited": nodes_visited,
+            "frontier_max_size": frontier_max_size,
+            "path_length": 0,
         }
         return None, 0, efficiency_metrics
 
@@ -266,11 +266,15 @@ if __name__ == "__main__":
     # Run A* search
     astar_path, astar_weight = graph.astar(start_vertex, goal_vertex, heuristic)
     # Run A* search with efficiency measurement (with heuristic)
-    astar2_path, astar2_weight, astar2_metrics = graph.astar2(start_vertex, goal_vertex, heuristic)
+    astar2_path, astar2_weight, astar2_metrics = graph.astar2(
+        start_vertex, goal_vertex, heuristic
+    )
 
     # Run A* search with zero heuristic (equivalent to UCS)
     zero_heuristic = {node: 0 for node in range(n)}
-    astar2_zero_path, astar2_zero_weight, astar2_zero_metrics = graph.astar2(start_vertex, goal_vertex, zero_heuristic)
+    astar2_zero_path, astar2_zero_weight, astar2_zero_metrics = graph.astar2(
+        start_vertex, goal_vertex, zero_heuristic
+    )
 
     # Run uninformed searches for comparison
     dfs_path, dfs_weight = graph.dfs(start_vertex, goal_vertex)
@@ -329,23 +333,33 @@ if __name__ == "__main__":
 
     print("\n3. Comparison Summary:")
     print("-" * 40)
-    print(f"Nodes expanded difference: {astar2_zero_metrics['nodes_expanded'] - astar2_metrics['nodes_expanded']} " +
-          f"(zero: {astar2_zero_metrics['nodes_expanded']}, heuristic: {astar2_metrics['nodes_expanded']})")
-    print(f"Nodes visited difference: {astar2_zero_metrics['nodes_visited'] - astar2_metrics['nodes_visited']} " +
-          f"(zero: {astar2_zero_metrics['nodes_visited']}, heuristic: {astar2_metrics['nodes_visited']})")
-    print(f"Frontier max size difference: {astar2_zero_metrics['frontier_max_size'] - astar2_metrics['frontier_max_size']} " +
-          f"(zero: {astar2_zero_metrics['frontier_max_size']}, heuristic: {astar2_metrics['frontier_max_size']})")
+    print(
+        f"Nodes expanded difference: {astar2_zero_metrics['nodes_expanded'] - astar2_metrics['nodes_expanded']} "
+        + f"(zero: {astar2_zero_metrics['nodes_expanded']}, heuristic: {astar2_metrics['nodes_expanded']})"
+    )
+    print(
+        f"Nodes visited difference: {astar2_zero_metrics['nodes_visited'] - astar2_metrics['nodes_visited']} "
+        + f"(zero: {astar2_zero_metrics['nodes_visited']}, heuristic: {astar2_metrics['nodes_visited']})"
+    )
+    print(
+        f"Frontier max size difference: {astar2_zero_metrics['frontier_max_size'] - astar2_metrics['frontier_max_size']} "
+        + f"(zero: {astar2_zero_metrics['frontier_max_size']}, heuristic: {astar2_metrics['frontier_max_size']})"
+    )
 
     # Check if both found paths and compare weights
     if astar2_zero_path and astar2_path:
-        print(f"Path weight difference: {astar2_zero_weight - astar2_weight:.1f} " +
-              f"(zero: {astar2_zero_weight:.1f}, heuristic: {astar2_weight:.1f})")
-        print(f"Path length difference: {astar2_zero_metrics['path_length'] - astar2_metrics['path_length']} " +
-              f"(zero: {astar2_zero_metrics['path_length']}, heuristic: {astar2_metrics['path_length']})")
+        print(
+            f"Path weight difference: {astar2_zero_weight - astar2_weight:.1f} "
+            + f"(zero: {astar2_zero_weight:.1f}, heuristic: {astar2_weight:.1f})"
+        )
+        print(
+            f"Path length difference: {astar2_zero_metrics['path_length'] - astar2_metrics['path_length']} "
+            + f"(zero: {astar2_zero_metrics['path_length']}, heuristic: {astar2_metrics['path_length']})"
+        )
     else:
         print("Note: One or both algorithms did not find a path")
 
-    if HAS_NX_MPL and n <= 30:
+    if HAS_NX_MPL:
 
         import matplotlib.pyplot as plt
         import networkx as nx
@@ -356,23 +370,18 @@ if __name__ == "__main__":
         # Use a consistent layout for all subplots
         pos = nx.spring_layout(nx_graph, seed=42)
 
-        # Create a figure to display all search paths (2x3 grid for 6 algorithms)
-        fig, axes = plt.subplots(2, 3, figsize=(18, 12))
+        # Create a figure to display selected search paths (1x3 grid for 3 algorithms)
+        fig, axes = plt.subplots(1, 3, figsize=(18, 6))
 
-        # Flatten axes for easier iteration
-        flat_axes = axes.flatten()
-
-        all_algorithms = [
-            ("DFS", dfs_path, dfs_weight),
-            ("BFS", bfs_path, bfs_weight),
-            ("A*2 (zero heuristic)", astar2_zero_path, astar2_zero_weight),
+        # Select only the three algorithms we want to visualize
+        selected_algorithms = [
             ("Greedy", greedy_path, greedy_weight),
-            ("A*", astar_path, astar_weight),
-            ("A*2", astar2_path, astar2_weight),
+            ("A* (zero heuristic)", astar2_zero_path, astar2_zero_weight),
+            ("A* (with heuristic)", astar2_path, astar2_weight),
         ]
 
-        for i, (algo_name, path, total_weight) in enumerate(all_algorithms):
-            ax = flat_axes[i]
+        for i, (algo_name, path, total_weight) in enumerate(selected_algorithms):
+            ax = axes[i]
 
             # Draw the base graph using nx2ax from graph.py with the precomputed layout
             nx2ax(nx_graph, ax, seed=42, show_weights=True, pos=pos)
@@ -387,7 +396,7 @@ if __name__ == "__main__":
                     ax=ax,
                     edgelist=path_edges,
                     edge_color="steelblue",
-                    width=3,
+                    width=4,
                     alpha=0.5,
                 )
                 # Highlight path nodes
@@ -396,7 +405,7 @@ if __name__ == "__main__":
                     pos,
                     ax=ax,
                     nodelist=path,
-                    node_color="lightsteelblue",
+                    node_color="lightskyblue",
                     node_size=600,
                     edgecolors="black",
                 )
@@ -419,7 +428,7 @@ if __name__ == "__main__":
             ax.tick_params(left=True, bottom=True, labelleft=True, labelbottom=True)
 
         plt.suptitle(
-            f"Search Algorithms from {start_vertex} to {goal_vertex}",
+            f"Selected Search Algorithms from {start_vertex} to {goal_vertex}",
             fontsize=16,
             fontweight="bold",
         )
