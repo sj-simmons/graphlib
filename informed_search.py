@@ -263,13 +263,10 @@ if __name__ == "__main__":
 
     # Run greedy search
     greedy_path, greedy_weight = graph.greedy(start_vertex, goal_vertex, heuristic)
-    # Run A* search
-    astar_path, astar_weight = graph.astar(start_vertex, goal_vertex, heuristic)
     # Run A* search with efficiency measurement (with heuristic)
     astar2_path, astar2_weight, astar2_metrics = graph.astar2(
         start_vertex, goal_vertex, heuristic
     )
-
     # Run A* search with zero heuristic (equivalent to UCS)
     zero_heuristic = {node: 0 for node in range(n)}
     astar2_zero_path, astar2_zero_weight, astar2_zero_metrics = graph.astar2(
@@ -290,10 +287,9 @@ if __name__ == "__main__":
     algorithms = [
         ("DFS", dfs_path, dfs_weight),
         ("BFS", bfs_path, bfs_weight),
-        ("A*2 (zero heuristic)", astar2_zero_path, astar2_zero_weight),
+        ("A* (zero heuristic)", astar2_zero_path, astar2_zero_weight),
         ("Greedy", greedy_path, greedy_weight),
-        ("A*", astar_path, astar_weight),
-        ("A*2", astar2_path, astar2_weight),
+        ("A* (non-zero heuristic)", astar2_path, astar2_weight),
     ]
 
     for algo_name, path, total_weight in algorithms:
@@ -377,7 +373,7 @@ if __name__ == "__main__":
         selected_algorithms = [
             ("Greedy", greedy_path, greedy_weight),
             ("A* (zero heuristic)", astar2_zero_path, astar2_zero_weight),
-            ("A* (with heuristic)", astar2_path, astar2_weight),
+            ("A* (non-zero heuristic)", astar2_path, astar2_weight),
         ]
 
         for i, (algo_name, path, total_weight) in enumerate(selected_algorithms):
