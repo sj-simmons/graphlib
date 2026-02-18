@@ -47,6 +47,7 @@ This project implements an undirected graph data structure with search algorithm
 - Inherits all methods from UndirectedGraph_
 - `greedy(start_vertex, goal_vertex, heuristic)` - Greedy best-first search using heuristic estimates
 - `astar(start_vertex, goal_vertex, heuristic)` - A* search algorithm using f(n) = g(n) + h(n)
+- `astar2(start_vertex, goal_vertex, heuristic)` - A* search with efficiency metrics tracking
 
 ### tree.py
 
@@ -126,6 +127,7 @@ The project includes a 20-node test graph with weighted edges to demonstrate dif
 - UCS finds minimum weight path
 - Greedy search uses heuristic estimates to guide search
 - A* search combines actual cost and heuristic estimates
+- A*2 search provides efficiency metrics in addition to path finding
 - Prim's algorithm finds Minimum Spanning Tree
 - Dijkstra's algorithm finds Shortest Path Tree
 

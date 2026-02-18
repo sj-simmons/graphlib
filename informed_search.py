@@ -242,21 +242,26 @@ class UndirectedGraph(uninformed_search.UndirectedGraph):
 
 if __name__ == "__main__":
 
-    from graph import watts_strogatz_, graph2nx, nx2ax, HAS_NX_MPL
+    from graph import graph2nx, nx2ax, HAS_NX_MPL
 
-    n, k = 20, 6
-    graph = watts_strogatz_(UndirectedGraph(), n=n, k=k, weight_range=(0, 10))
+    from graph import watts_strogatz_
 
-    print(graph)
+    n, k = 28, 6
+    graph = watts_strogatz_(UndirectedGraph(), n=n, k=k, weight_range=(0, 20))
 
-    # Define start and goal vertices
+    # from graph import barabasi_albert_
+    # n, m = 50,3
+    # graph = barabasi_albert_(UndirectedGraph(), n=n, m=m)
+
     start_vertex = 0
-    goal_vertex = n // 2 - 1
+    goal_vertex = (n - 1) // 2
+
+    # print(graph)
 
     # Create a simple heuristic (straight-line distance approximation)
-    # For the 20-node graph, we'll use a simple heuristic based on node indices
+    # For the n-node graph, we'll use a simple heuristic based on node indices
     heuristic = {}
-    for node in range(k):
+    for node in range(n):
         # Simple heuristic: distance based on node number difference
         # This is just for demonstration purposes
         heuristic[node] = abs(node - goal_vertex) * 5
@@ -315,7 +320,7 @@ if __name__ == "__main__":
     print(f"Maximum frontier size: {astar2_zero_metrics['frontier_max_size']}")
     print(f"Path length: {astar2_zero_metrics['path_length']}")
 
-    print("\n2. With Original Heuristic:")
+    print("\n2. With Non-zero Heuristic:")
     print("-" * 40)
     if astar2_path:
         print(f"Path found: {astar2_path}")

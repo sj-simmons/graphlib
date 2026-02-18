@@ -308,6 +308,106 @@ def watts_strogatz_(
     return graph
 
 
+def barabasi_albert_(
+    graph: T,
+    n: int = 100,
+    m: int = 2,
+    weight_range: Tuple[Union[int, float], Union[int, float]] = (1, 10),
+    seed: Optional[int] = None,
+) -> T:
+    """
+    Generate a Barabási–Albert scale-free network graph.
+
+    The graph grows through preferential attachment: new nodes are more likely
+    to connect to nodes that already have many connections.
+
+    Args:
+        graph: An empty instance of a subclass of UndirectedGraph_ to populate
+        n: Total number of nodes in the final graph
+        m: Number of edges to attach from a new node to existing nodes (m < n)
+        weight_range: Tuple (min_weight, max_weight) for edge weights
+        seed: Random seed for reproducibility
+
+    Returns:
+        T: The populated Barabási–Albert graph
+
+    Raises:
+        ValueError: If parameters are invalid
+        AssertionError: If graph is not empty
+    """
+    assert len(graph) == 0, "You probably wanted to start with an empty graph!"
+
+    if n <= 0:
+        raise ValueError("n must be positive")
+    if m <= 0:
+        raise ValueError("m must be positive")
+    if m >= n:
+        raise ValueError("m must be less than n")
+    if weight_range[0] > weight_range[1]:
+        raise ValueError("min_weight must be <= max_weight")
+
+    # Initialize random number generator
+    rng = random.Random(seed)
+
+    # Start with a complete graph of m+1 nodes
+    # This ensures each initial node has at least m edges
+    initial_nodes = m + 1
+
+    # Add initial nodes
+    for i in range(initial_nodes):
+        graph.add_vertex(i)
+
+    # Create initial complete graph among first m+1 nodes
+    for i in range(initial_nodes):
+        for j in range(i + 1, initial_nodes):
+            weight = round(rng.uniform(weight_range[0], weight_range[1]), 2)
+            graph.add_edge(i, j, weight)
+
+    # Track degrees for preferential attachment
+    degrees = [initial_nodes - 1] * initial_nodes  # Each node has m edges initially
+
+    # Add remaining nodes with preferential attachment
+    for new_node in range(initial_nodes, n):
+        graph.add_vertex(new_node)
+
+        # Create list of existing nodes weighted by their degree
+        # (preferential attachment: higher degree = higher probability)
+        node_list = []
+        for node_idx, degree in enumerate(degrees):
+            node_list.extend([node_idx] * degree)
+
+        # Select m distinct nodes to connect to
+        selected_nodes = set()
+        attempts = 0
+        max_attempts = m * 10  # Prevent infinite loops
+
+        while len(selected_nodes) < m and attempts < max_attempts:
+            if node_list:  # Ensure node_list is not empty
+                selected_node = rng.choice(node_list)
+                if selected_node not in selected_nodes:
+                    selected_nodes.add(selected_node)
+            attempts += 1
+
+        # If we couldn't find enough distinct nodes, add random ones
+        while len(selected_nodes) < m:
+            available_nodes = list(range(new_node))
+            random_node = rng.choice(available_nodes)
+            selected_nodes.add(random_node)
+
+        # Connect new node to selected nodes
+        for existing_node in selected_nodes:
+            weight = round(rng.uniform(weight_range[0], weight_range[1]), 2)
+            graph.add_edge(new_node, existing_node, weight)
+
+            # Update degrees
+            degrees[existing_node] += 1
+
+        # Add degree entry for the new node
+        degrees.append(m)
+
+    return graph
+
+
 def twenty_(graph: T, weighted: bool = True, more_edges: bool = True) -> T:
     """
     Generate a 20-node graph with multiple paths from N0 to N19.
@@ -476,41 +576,59 @@ if __name__ == "__main__":
     print(f"Complete graph K_8: {len(graph)} vertices, {len(graph.get_edges())} edges")
     print(f"Expected edges for K_8: {8 * 7 // 2} (n*(n-1)/2)")
 
+    # Test 20-node graph
+    graph20 = twenty_(UndirectedGraph_())
+    print("\nGraph Information for 20-node graph:")
+    print(f"Number of vertices: {len(graph20)}")
+    print(f"Number of edges: {len(graph20.get_edges())}")
+
+    # Test Watts-Strogatz graph
+    n_ws, k = 40, 6
+    graph_ws = watts_strogatz_(UndirectedGraph_(), n=n_ws, k=k)
+    print(f"\nWatts-Strogatz graph (n={n_ws}, k={k}):")
+    print(f"Number of vertices: {len(graph_ws)}")
+    print(f"Number of edges: {len(graph_ws.get_edges())}")
+
+    # Test Barabási–Albert graph
+    n_ba, m = 40, 3
+    graph_ba = barabasi_albert_(UndirectedGraph_(), n=n_ba, m=m)
+    print(f"\nBarabási–Albert graph (n={n_ba}, m={m}):")
+    print(f"Number of vertices: {len(graph_ba)}")
+    print(f"Number of edges: {len(graph_ba.get_edges())}")
+
     if HAS_NX_MPL:
-        fig, axes = plt.subplots(1, 3, figsize=(24, 8))
+        # Figure 1: Complete graph and 20-node graph
+        fig1, axes1 = plt.subplots(1, 2, figsize=(16, 8))
 
         # Complete graph
-        ax1 = axes[0]
+        ax1 = axes1[0]
         nx2ax(graph2nx(graph), ax1, seed=42, show_weights=True)
         ax1.set_title("Complete Graph K_8")
         ax1.axis("off")
 
-    # Test 20-node graph
-    graph = twenty_(UndirectedGraph_())
-    print("\nGraph Information for 20-node graph:")
-    print(f"Number of vertices: {len(graph)}")
-    print(f"Number of edges: {len(graph.get_edges())}")
-
-    if HAS_NX_MPL:
         # 20-node graph
-        ax2 = axes[1]
-        nx2ax(graph2nx(graph), ax2, seed=42, show_weights=True)
+        ax2 = axes1[1]
+        nx2ax(graph2nx(graph20), ax2, seed=42, show_weights=True)
         ax2.set_title("20-node Graph")
         ax2.axis("off")
 
-    # Test Watts-Strogatz graph
-    n, k = 24, 6
-    graph = watts_strogatz_(UndirectedGraph_(), n=n, k=k)
-    print(f"\nWatts-Strogatz graph (n={n}, k={k}):")
-    print(f"Number of vertices: {len(graph)}")
-    print(f"Number of edges: {len(graph.get_edges())}")
+        plt.tight_layout()
+        plt.show()
 
-    if HAS_NX_MPL:
+        # Figure 2: Watts-Strogatz and Barabási–Albert graphs
+        fig2, axes2 = plt.subplots(1, 2, figsize=(16, 8))
+
         # Watts-Strogatz graph
-        ax3 = axes[2]
-        nx2ax(graph2nx(graph), ax3, seed=42, show_weights=True)
-        ax3.set_title(f"Watts-Strogatz (n={n}, k={k})")
+        ax3 = axes2[0]
+        nx2ax(graph2nx(graph_ws), ax3, seed=42, show_weights=True)
+        ax3.set_title(f"Watts-Strogatz (n={n_ws}, k={k})")
         ax3.axis("off")
+
+        # Barabási–Albert graph
+        ax4 = axes2[1]
+        nx2ax(graph2nx(graph_ba), ax4, seed=42, show_weights=True)
+        ax4.set_title(f"Barabási–Albert (n={n_ba}, m={m})")
+        ax4.axis("off")
 
         plt.tight_layout()
         plt.show()
