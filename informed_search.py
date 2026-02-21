@@ -242,9 +242,7 @@ class UndirectedGraph(uninformed_search.UndirectedGraph):
 
 if __name__ == "__main__":
 
-    from graph import graph2nx, nx2ax, HAS_NX_MPL
-
-    from graph import watts_strogatz_
+    from graph import graph2nx, nx2ax, HAS_NX_MPL watts_strogatz_
 
     n, k = 28, 6
     graph = watts_strogatz_(UndirectedGraph(), n=n, k=k, weight_range=(0, 20))

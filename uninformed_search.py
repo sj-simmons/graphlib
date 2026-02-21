@@ -233,108 +233,116 @@ class UndirectedGraph(graph.UndirectedGraph_):
 
 
 if __name__ == "__main__":
+    from graph import twenty_, graph2nx, nx2ax, largenx2ax, HAS_NX_MPL, watts_strogatz_
+    import random
 
-    from graph import twenty_, graph2nx, nx2ax, HAS_NX_MPL, watts_strogatz_
+    def demo(n):
+        # graph = twenty_(UndirectedGraph())
+        graph = watts_strogatz_(UndirectedGraph(), n=n, k=4)
 
-    # graph = twenty_(UndirectedGraph())
-    n = 30
-    graph = watts_strogatz_(UndirectedGraph(), n=n, k=4)
+        # print(graph)
 
-    print(graph)
+        # Define start and goal vertices
+        start_vertex = 0
+        goal_vertex = n // 2 if len(graph) < 40 else random.randint(1, n - 1)
 
-    # Define start and goal vertices
-    start_vertex = 0
-    goal_vertex = n // 2
+        # Run each search algorithm
+        algorithms = [
+            ("DFS", graph.dfs(start_vertex, goal_vertex)),
+            ("BFS", graph.bfs(start_vertex, goal_vertex)),
+            ("UCS", graph.ucs(start_vertex, goal_vertex)),
+        ]
 
-    # Run each search algorithm
-    algorithms = [
-        ("DFS", graph.dfs(start_vertex, goal_vertex)),
-        ("BFS", graph.bfs(start_vertex, goal_vertex)),
-        ("UCS", graph.ucs(start_vertex, goal_vertex)),
-    ]
-
-    # Print a summary
-    print("\n" + "=" * 50)
-    print("Search Algorithm Comparison:")
-    print("=" * 50)
-    print("Number of nodes:", len(graph.graph.keys()))
-    for algo_name, (path, total_weight) in algorithms:
-        if path:
-            print(f"{algo_name}: {len(path)-1} steps, total weight {total_weight:.1f}")
-        else:
-            print(f"{algo_name}: No path found")
-
-    if HAS_NX_MPL:
-
-        import matplotlib.pyplot as plt
-        import networkx as nx
-
-        # Create a figure to display BFS, DFS, and UCS paths
-        fig, axes = plt.subplots(1, 3, figsize=(18, 6))
-
-        # Convert the graph to networkx for visualization using graph.py's function
-        nx_graph = graph2nx(graph)
-
-        # Use a consistent layout for all subplots
-        pos = nx.spring_layout(nx_graph, seed=42)
-
-        for i, (algo_name, (path, total_weight)) in enumerate(algorithms):
-            ax = axes[i]
-
-            # Draw the base graph using nx2ax from graph.py with the precomputed layout
-            nx2ax(nx_graph, ax, seed=42, show_weights=True, pos=pos)
-
-            # Highlight the path if found
+        # Print a summary
+        print("\n" + "=" * 50)
+        print("Search Algorithm Comparison:")
+        print("=" * 50)
+        print("Number of nodes:", len(graph.graph.keys()))
+        for algo_name, (path, total_weight) in algorithms:
             if path:
-                # Highlight path edges
-                path_edges = list(zip(path[:-1], path[1:]))
-                nx.draw_networkx_edges(
-                    nx_graph,
-                    pos,
-                    ax=ax,
-                    edgelist=path_edges,
-                    edge_color="steelblue",
-                    width=3,
-                    alpha=0.5,
+                print(
+                    f"{algo_name}: {len(path)-1} steps, total weight {total_weight:.1f}"
                 )
-                # Highlight path nodes
-                nx.draw_networkx_nodes(
-                    nx_graph,
-                    pos,
-                    ax=ax,
-                    nodelist=path,
-                    node_color="lightsteelblue",
-                    node_size=600,
-                    edgecolors="black",
-                )
-                # Highlight start and goal nodes
-                nx.draw_networkx_nodes(
-                    nx_graph,
-                    pos,
-                    ax=ax,
-                    nodelist=[start_vertex, goal_vertex],
-                    node_color="lightskyblue",
-                    node_size=700,
-                    edgecolors="black",
-                )
-
-                ax.set_title(f"{algo_name} Path\nTotal Weight: {total_weight:.1f}")
-
-                # Print information to console
-                print(f"{algo_name}:")
-                print(f"  Path: {path}")
-                print(f"  Total weight: {total_weight:.1f}")
-                print(f"  Number of steps: {len(path)-1}")
             else:
-                ax.set_title(f"{algo_name}: No Path Found")
+                print(f"{algo_name}: No path found")
 
-            ax.set_axis_on()
-            ax.tick_params(left=True, bottom=True, labelleft=True, labelbottom=True)
+        if HAS_NX_MPL:
+            import matplotlib.pyplot as plt
+            import networkx as nx
 
-        plt.suptitle(
-            f"Search Algorithms from {start_vertex} to {goal_vertex}",
-            fontsize=16,
-            fontweight="bold",
-        )
-        plt.tight_layout()
-        plt.show()
+            # Create a figure to display BFS, DFS, and UCS paths
+            fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+
+            # Convert the graph to networkx for visualization using graph.py's function
+            nx_graph = graph2nx(graph)
+            nx_graph = graph2nx(graph) if len(graph) <= 40 else graph2nx(graph)
+
+            # Use a consistent layout for all subplots
+            pos = nx.spring_layout(nx_graph, seed=42)
+
+            for i, (algo_name, (path, total_weight)) in enumerate(algorithms):
+                ax = axes[i]
+
+                # Draw the base graph using nx2ax from graph.py with the precomputed layout
+                if len(graph) <= 40:
+                    nx2ax(nx_graph, ax, seed=42, show_weights=True, pos=pos)
+                else:
+                    largenx2ax(nx_graph, ax, seed=42, pos=pos)
+
+                # Highlight the path if found
+                if path:
+                    # Highlight path edges
+                    path_edges = list(zip(path[:-1], path[1:]))
+                    nx.draw_networkx_edges(
+                        nx_graph,
+                        pos,
+                        ax=ax,
+                        edgelist=path_edges,
+                        edge_color="skyblue" if len(graph) < 40 else "red",
+                        width=3 if len(graph) < 40 else 2,
+                        alpha=0.5,
+                    )
+                    # Highlight path nodes
+                    nx.draw_networkx_nodes(
+                        nx_graph,
+                        pos,
+                        ax=ax,
+                        nodelist=path,
+                        node_color="lightsteelblue" if len(graph) < 40 else "red",
+                        node_size=600 if len(graph) < 40 else 20,
+                        edgecolors="black",
+                    )
+                    # Highlight start and goal nodes
+                    nx.draw_networkx_nodes(
+                        nx_graph,
+                        pos,
+                        ax=ax,
+                        nodelist=[start_vertex, goal_vertex],
+                        node_color="lightskyblue" if len(graph) < 40 else "red",
+                        node_size=700 if len(graph) < 40 else 20,
+                        edgecolors="black",
+                    )
+
+                    ax.set_title(f"{algo_name} Path\nTotal Weight: {total_weight:.1f}")
+
+                    # Print information to console
+                    print(f"{algo_name}:")
+                    print(f"  Path: {path}")
+                    print(f"  Total weight: {total_weight:.1f}")
+                    print(f"  Number of steps: {len(path)-1}")
+                else:
+                    ax.set_title(f"{algo_name}: No Path Found")
+
+                ax.set_axis_on()
+                ax.tick_params(left=True, bottom=True, labelleft=True, labelbottom=True)
+
+            plt.suptitle(
+                f"Search Algorithms from {start_vertex} to {goal_vertex}",
+                fontsize=16,
+                fontweight="bold",
+            )
+            plt.tight_layout()
+            plt.show()
+
+    demo(30)
+    demo(300)

@@ -520,7 +520,6 @@ try:
         return nx_graph
 
     def nx2ax(nx_graph: "nx.Graph", ax, seed=42, show_weights: bool = True, pos=None):
-
         # Create a layout for the nodes if not provided
         if pos is None:
             pos = nx.spring_layout(nx_graph, seed=seed)
@@ -562,6 +561,38 @@ try:
 
         return pos
 
+    def largenx2ax(nx_graph: "nx.Graph", ax, seed=42, pos=None):
+        """
+        Display large graphs without node labels or edge weights for better visualization.
+
+        Args:
+            nx_graph: networkx graph to display
+            ax: matplotlib axis to draw on
+            seed: random seed for layout reproducibility
+            pos: precomputed node positions (optional)
+        """
+        # Create a layout for the nodes if not provided
+        if pos is None:
+            pos = nx.spring_layout(nx_graph, seed=seed)
+
+        # Plot graph without labels
+        nx.draw(
+            nx_graph,
+            pos,
+            ax=ax,
+            with_labels=False,  # No node labels for large graphs
+            node_color="lightgray",
+            node_size=20,  # Smaller nodes for large graphs
+            font_size=8,
+            font_weight="bold",
+            edge_color="gray",
+            width=0.5,  # Thinner edges for large graphs
+            edgecolors="black",
+            alpha=0.7,  # Slightly transparent for better visualization
+        )
+
+        return pos
+
 except ImportError as e:
     print(f"Required GUI visualization libraries not found: {e}")
     print("\nPlease consider installing these libraries:")
@@ -569,7 +600,6 @@ except ImportError as e:
     HAS_NX_MPL = False
 
 if __name__ == "__main__":
-
     # Test complete graph
     print("Testing complete graph:")
     graph = complete_(UndirectedGraph_(), n=8)
@@ -629,6 +659,45 @@ if __name__ == "__main__":
         nx2ax(graph2nx(graph_ba), ax4, seed=42, show_weights=True)
         ax4.set_title(f"Barabási–Albert (n={n_ba}, m={m})")
         ax4.axis("off")
+
+        plt.tight_layout()
+        plt.show()
+
+        # Figure 3: Large graphs without labels using largenx2ax
+        print("\nGenerating large graphs for Figure 3...\n")
+
+        # Create large Watts-Strogatz graph
+        n_ws_large, k_large = 300, 8
+        graph_ws_large = watts_strogatz_(
+            UndirectedGraph_(), n=n_ws_large, k=k_large, seed=42
+        )
+        print(f"Large Watts-Strogatz graph (n={n_ws_large}, k={k_large}):")
+        print(f"Number of vertices: {len(graph_ws_large)}")
+        print(f"Number of edges: {len(graph_ws_large.get_edges())}")
+
+        # Create large Barabási–Albert graph
+        n_ba_large, m_large = 300, 3
+        graph_ba_large = barabasi_albert_(
+            UndirectedGraph_(), n=n_ba_large, m=m_large, seed=42
+        )
+        print(f"\nLarge Barabási–Albert graph (n={n_ba_large}, m={m_large}):")
+        print(f"Number of vertices: {len(graph_ba_large)}")
+        print(f"Number of edges: {len(graph_ba_large.get_edges())}")
+
+        # Create Figure 3
+        fig3, axes3 = plt.subplots(1, 2, figsize=(16, 8))
+
+        # Large Watts-Strogatz graph
+        ax5 = axes3[0]
+        largenx2ax(graph2nx(graph_ws_large), ax5, seed=42)
+        ax5.set_title(f"Large Watts-Strogatz (n={n_ws_large}, k={k_large})")
+        ax5.axis("off")
+
+        # Large Barabási–Albert graph
+        ax6 = axes3[1]
+        largenx2ax(graph2nx(graph_ba_large), ax6, seed=42)
+        ax6.set_title(f"Large Barabási–Albert (n={n_ba_large}, m={m_large})")
+        ax6.axis("off")
 
         plt.tight_layout()
         plt.show()
