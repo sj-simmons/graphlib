@@ -241,195 +241,206 @@ class UndirectedGraph(uninformed_search.UndirectedGraph):
 
 
 if __name__ == "__main__":
-
-    from graph import graph2nx, nx2ax, HAS_NX_MPL watts_strogatz_
-
-    n, k = 28, 6
-    graph = watts_strogatz_(UndirectedGraph(), n=n, k=k, weight_range=(0, 20))
-
-    # from graph import barabasi_albert_
-    # n, m = 50,3
-    # graph = barabasi_albert_(UndirectedGraph(), n=n, m=m)
-
-    start_vertex = 0
-    goal_vertex = (n - 1) // 2
-
-    # print(graph)
-
-    # Create a simple heuristic (straight-line distance approximation)
-    # For the n-node graph, we'll use a simple heuristic based on node indices
-    heuristic = {}
-    for node in range(n):
-        # Simple heuristic: distance based on node number difference
-        # This is just for demonstration purposes
-        heuristic[node] = abs(node - goal_vertex) * 5
-
-    # Run greedy search
-    greedy_path, greedy_weight = graph.greedy(start_vertex, goal_vertex, heuristic)
-    # Run A* search with efficiency measurement (with heuristic)
-    astar2_path, astar2_weight, astar2_metrics = graph.astar2(
-        start_vertex, goal_vertex, heuristic
+    from graph import (
+        graph2nx,
+        nx2ax,
+        largenx2ax,
+        HAS_NX_MPL,
+        watts_strogatz_,
+        barabasi_albert_,
     )
-    # Run A* search with zero heuristic (equivalent to UCS)
-    zero_heuristic = {node: 0 for node in range(n)}
-    astar2_zero_path, astar2_zero_weight, astar2_zero_metrics = graph.astar2(
-        start_vertex, goal_vertex, zero_heuristic
-    )
+    import random
 
-    # Run uninformed searches for comparison
-    dfs_path, dfs_weight = graph.dfs(start_vertex, goal_vertex)
-    bfs_path, bfs_weight = graph.bfs(start_vertex, goal_vertex)
+    def demo(n):
+        # graph = watts_strogatz_(UndirectedGraph(), n=n, k=6, weight_range=(0, 20))
+        graph = barabasi_albert_(UndirectedGraph(), n=n, m=3 if n < 40 else 2)
 
-    # Print a summary
-    print("\n" + "=" * 50)
-    print("Search Algorithm Comparison:")
-    print("=" * 50)
-    print(f"Start: {start_vertex}, Goal: {goal_vertex}")
-    print()
+        start_vertex = 0
+        goal_vertex = n // 2 if len(graph) < 40 else random.randint(1, n - 1)
 
-    algorithms = [
-        ("DFS", dfs_path, dfs_weight),
-        ("BFS", bfs_path, bfs_weight),
-        ("A* (zero heuristic)", astar2_zero_path, astar2_zero_weight),
-        ("Greedy", greedy_path, greedy_weight),
-        ("A* (non-zero heuristic)", astar2_path, astar2_weight),
-    ]
+        # print(graph)
 
-    for algo_name, path, total_weight in algorithms:
-        if path:
-            print(f"{algo_name}: {len(path)-1} steps, total weight {total_weight:.1f}")
-        else:
-            print(f"{algo_name}: No path found")
+        # Create a simple heuristic (straight-line distance approximation)
+        # For the n-node graph, we'll use a simple heuristic based on node indices
+        heuristic = {}
+        for node in range(n):
+            # Simple heuristic: distance based on node number difference
+            # This is just for demonstration purposes
+            heuristic[node] = abs(node - goal_vertex) * 5
 
-    # Print efficiency metrics comparison for astar2 with different heuristics
-    print("\n" + "=" * 50)
-    print("A*2 Efficiency Metrics Comparison:")
-    print("=" * 50)
-
-    print("\n1. With Zero Heuristic (equivalent to UCS):")
-    print("-" * 40)
-    if astar2_zero_path:
-        print(f"Path found: {astar2_zero_path}")
-        print(f"Total weight: {astar2_zero_weight:.1f}")
-    else:
-        print("No path found")
-    print(f"Nodes expanded: {astar2_zero_metrics['nodes_expanded']}")
-    print(f"Nodes visited: {astar2_zero_metrics['nodes_visited']}")
-    print(f"Maximum frontier size: {astar2_zero_metrics['frontier_max_size']}")
-    print(f"Path length: {astar2_zero_metrics['path_length']}")
-
-    print("\n2. With Non-zero Heuristic:")
-    print("-" * 40)
-    if astar2_path:
-        print(f"Path found: {astar2_path}")
-        print(f"Total weight: {astar2_weight:.1f}")
-    else:
-        print("No path found")
-    print(f"Nodes expanded: {astar2_metrics['nodes_expanded']}")
-    print(f"Nodes visited: {astar2_metrics['nodes_visited']}")
-    print(f"Maximum frontier size: {astar2_metrics['frontier_max_size']}")
-    print(f"Path length: {astar2_metrics['path_length']}")
-
-    print("\n3. Comparison Summary:")
-    print("-" * 40)
-    print(
-        f"Nodes expanded difference: {astar2_zero_metrics['nodes_expanded'] - astar2_metrics['nodes_expanded']} "
-        + f"(zero: {astar2_zero_metrics['nodes_expanded']}, heuristic: {astar2_metrics['nodes_expanded']})"
-    )
-    print(
-        f"Nodes visited difference: {astar2_zero_metrics['nodes_visited'] - astar2_metrics['nodes_visited']} "
-        + f"(zero: {astar2_zero_metrics['nodes_visited']}, heuristic: {astar2_metrics['nodes_visited']})"
-    )
-    print(
-        f"Frontier max size difference: {astar2_zero_metrics['frontier_max_size'] - astar2_metrics['frontier_max_size']} "
-        + f"(zero: {astar2_zero_metrics['frontier_max_size']}, heuristic: {astar2_metrics['frontier_max_size']})"
-    )
-
-    # Check if both found paths and compare weights
-    if astar2_zero_path and astar2_path:
-        print(
-            f"Path weight difference: {astar2_zero_weight - astar2_weight:.1f} "
-            + f"(zero: {astar2_zero_weight:.1f}, heuristic: {astar2_weight:.1f})"
+        # Run greedy search
+        greedy_path, greedy_weight = graph.greedy(start_vertex, goal_vertex, heuristic)
+        # Run A* search with efficiency measurement (with heuristic)
+        astar2_path, astar2_weight, astar2_metrics = graph.astar2(
+            start_vertex, goal_vertex, heuristic
         )
-        print(
-            f"Path length difference: {astar2_zero_metrics['path_length'] - astar2_metrics['path_length']} "
-            + f"(zero: {astar2_zero_metrics['path_length']}, heuristic: {astar2_metrics['path_length']})"
+        # Run A* search with zero heuristic (equivalent to UCS)
+        zero_heuristic = {node: 0 for node in range(n)}
+        astar2_zero_path, astar2_zero_weight, astar2_zero_metrics = graph.astar2(
+            start_vertex, goal_vertex, zero_heuristic
         )
-    else:
-        print("Note: One or both algorithms did not find a path")
 
-    if HAS_NX_MPL:
+        # Run uninformed searches for comparison
+        dfs_path, dfs_weight = graph.dfs(start_vertex, goal_vertex)
+        bfs_path, bfs_weight = graph.bfs(start_vertex, goal_vertex)
 
-        import matplotlib.pyplot as plt
-        import networkx as nx
+        # Print a summary
+        print("\n" + "=" * 50)
+        print("Search Algorithm Comparison:")
+        print("=" * 50)
+        print(f"Start: {start_vertex}, Goal: {goal_vertex}")
+        print()
 
-        # Convert the graph to networkx for visualization using graph.py's function
-        nx_graph = graph2nx(graph)
-
-        # Use a consistent layout for all subplots
-        pos = nx.spring_layout(nx_graph, seed=42)
-
-        # Create a figure to display selected search paths (1x3 grid for 3 algorithms)
-        fig, axes = plt.subplots(1, 3, figsize=(18, 6))
-
-        # Select only the three algorithms we want to visualize
-        selected_algorithms = [
-            ("Greedy", greedy_path, greedy_weight),
+        algorithms = [
+            ("DFS", dfs_path, dfs_weight),
+            ("BFS", bfs_path, bfs_weight),
             ("A* (zero heuristic)", astar2_zero_path, astar2_zero_weight),
+            ("Greedy", greedy_path, greedy_weight),
             ("A* (non-zero heuristic)", astar2_path, astar2_weight),
         ]
 
-        for i, (algo_name, path, total_weight) in enumerate(selected_algorithms):
-            ax = axes[i]
-
-            # Draw the base graph using nx2ax from graph.py with the precomputed layout
-            nx2ax(nx_graph, ax, seed=42, show_weights=True, pos=pos)
-
-            # Highlight the path if found
+        for algo_name, path, total_weight in algorithms:
             if path:
-                # Highlight path edges
-                path_edges = list(zip(path[:-1], path[1:]))
-                nx.draw_networkx_edges(
-                    nx_graph,
-                    pos,
-                    ax=ax,
-                    edgelist=path_edges,
-                    edge_color="steelblue",
-                    width=4,
-                    alpha=0.5,
+                print(
+                    f"{algo_name}: {len(path)-1} steps, total weight {total_weight:.1f}"
                 )
-                # Highlight path nodes
-                nx.draw_networkx_nodes(
-                    nx_graph,
-                    pos,
-                    ax=ax,
-                    nodelist=path,
-                    node_color="lightskyblue",
-                    node_size=600,
-                    edgecolors="black",
-                )
-                # Highlight start and goal nodes
-                nx.draw_networkx_nodes(
-                    nx_graph,
-                    pos,
-                    ax=ax,
-                    nodelist=[start_vertex, goal_vertex],
-                    node_color="lightskyblue",
-                    node_size=700,
-                    edgecolors="black",
-                )
-
-                ax.set_title(f"{algo_name} Path\nTotal Weight: {total_weight:.1f}")
             else:
-                ax.set_title(f"{algo_name}: No Path Found")
+                print(f"{algo_name}: No path found")
 
-            ax.set_axis_on()
-            ax.tick_params(left=True, bottom=True, labelleft=True, labelbottom=True)
+        # Print efficiency metrics comparison for astar2 with different heuristics
+        print("\n" + "=" * 50)
+        print("A*2 Efficiency Metrics Comparison:")
+        print("=" * 50)
 
-        plt.suptitle(
-            f"Selected Search Algorithms from {start_vertex} to {goal_vertex}",
-            fontsize=16,
-            fontweight="bold",
+        print("\n1. With Zero Heuristic (equivalent to UCS):")
+        print("-" * 40)
+        if astar2_zero_path:
+            print(f"Path found: {astar2_zero_path}")
+            print(f"Total weight: {astar2_zero_weight:.1f}")
+        else:
+            print("No path found")
+        print(f"Nodes expanded: {astar2_zero_metrics['nodes_expanded']}")
+        print(f"Nodes visited: {astar2_zero_metrics['nodes_visited']}")
+        print(f"Maximum frontier size: {astar2_zero_metrics['frontier_max_size']}")
+        print(f"Path length: {astar2_zero_metrics['path_length']}")
+
+        print("\n2. With Non-zero Heuristic:")
+        print("-" * 40)
+        if astar2_path:
+            print(f"Path found: {astar2_path}")
+            print(f"Total weight: {astar2_weight:.1f}")
+        else:
+            print("No path found")
+        print(f"Nodes expanded: {astar2_metrics['nodes_expanded']}")
+        print(f"Nodes visited: {astar2_metrics['nodes_visited']}")
+        print(f"Maximum frontier size: {astar2_metrics['frontier_max_size']}")
+        print(f"Path length: {astar2_metrics['path_length']}")
+
+        print("\n3. Comparison Summary:")
+        print("-" * 40)
+        print(
+            f"Nodes expanded difference: {astar2_zero_metrics['nodes_expanded'] - astar2_metrics['nodes_expanded']} "
+            + f"(zero: {astar2_zero_metrics['nodes_expanded']}, heuristic: {astar2_metrics['nodes_expanded']})"
         )
-        plt.tight_layout()
-        plt.show()
+        print(
+            f"Nodes visited difference: {astar2_zero_metrics['nodes_visited'] - astar2_metrics['nodes_visited']} "
+            + f"(zero: {astar2_zero_metrics['nodes_visited']}, heuristic: {astar2_metrics['nodes_visited']})"
+        )
+        print(
+            f"Frontier max size difference: {astar2_zero_metrics['frontier_max_size'] - astar2_metrics['frontier_max_size']} "
+            + f"(zero: {astar2_zero_metrics['frontier_max_size']}, heuristic: {astar2_metrics['frontier_max_size']})"
+        )
+
+        # Check if both found paths and compare weights
+        if astar2_zero_path and astar2_path:
+            print(
+                f"Path weight difference: {astar2_zero_weight - astar2_weight:.1f} "
+                + f"(zero: {astar2_zero_weight:.1f}, heuristic: {astar2_weight:.1f})"
+            )
+            print(
+                f"Path length difference: {astar2_zero_metrics['path_length'] - astar2_metrics['path_length']} "
+                + f"(zero: {astar2_zero_metrics['path_length']}, heuristic: {astar2_metrics['path_length']})"
+            )
+        else:
+            print("Note: One or both algorithms did not find a path")
+
+        if HAS_NX_MPL:
+            import matplotlib.pyplot as plt
+            import networkx as nx
+
+            # Convert the graph to networkx for visualization using graph.py's function
+            nx_graph = graph2nx(graph)
+
+            # Use a consistent layout for all subplots
+            pos = nx.spring_layout(nx_graph, seed=42)
+
+            # Create a figure to display selected search paths (1x3 grid for 3 algorithms)
+            fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+
+            # Select only the three algorithms we want to visualize
+            selected_algorithms = [
+                ("Greedy", greedy_path, greedy_weight),
+                ("A* (zero heuristic)", astar2_zero_path, astar2_zero_weight),
+                ("A* (non-zero heuristic)", astar2_path, astar2_weight),
+            ]
+
+            for i, (algo_name, path, total_weight) in enumerate(selected_algorithms):
+                ax = axes[i]
+
+                # Draw the base graph using nx2ax from graph.py with the precomputed layout
+                if len(graph) < 40:
+                    node_size = nx2ax(nx_graph, ax, seed=42, show_weights=True, pos=pos)
+                else:
+                    node_size = largenx2ax(nx_graph, ax, seed=42, pos=pos)
+
+                # Highlight the path if found
+                if path:
+                    # Highlight path edges
+                    path_edges = list(zip(path[:-1], path[1:]))
+                    nx.draw_networkx_edges(
+                        nx_graph,
+                        pos,
+                        ax=ax,
+                        edgelist=path_edges,
+                        edge_color="steelblue" if len(graph) < 40 else "red",
+                        width=4 if len(graph) < 40 else 2,
+                        alpha=0.5,
+                    )
+                    # Highlight path nodes
+                    nx.draw_networkx_nodes(
+                        nx_graph,
+                        pos,
+                        ax=ax,
+                        nodelist=path,
+                        node_color="lightskyblue" if len(graph) < 40 else "red",
+                        node_size=node_size,
+                        edgecolors="black",
+                    )
+                    # Highlight start and goal nodes
+                    nx.draw_networkx_nodes(
+                        nx_graph,
+                        pos,
+                        ax=ax,
+                        nodelist=[start_vertex, goal_vertex],
+                        node_color="lightskyblue" if len(graph) < 40 else "red",
+                        node_size=node_size,
+                        edgecolors="black",
+                    )
+
+                    ax.set_title(f"{algo_name} Path\nTotal Weight: {total_weight:.1f}")
+                else:
+                    ax.set_title(f"{algo_name}: No Path Found")
+
+                ax.set_axis_on()
+                ax.tick_params(left=True, bottom=True, labelleft=True, labelbottom=True)
+
+            plt.suptitle(
+                f"Selected Search Algorithms from {start_vertex} to {goal_vertex}",
+                fontsize=16,
+                fontweight="bold",
+            )
+            plt.tight_layout()
+            plt.show()
+
+    demo(24)
+    demo(300)

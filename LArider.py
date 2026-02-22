@@ -77,7 +77,6 @@ for city1 in cities.keys():
         cities_graph.add_edge(city1, city2, distance)
 
 if __name__ == "__main__":
-
     start_city = "Playa"
     path, distance = cities_graph.greedy(
         start_city, "Silver Lake", distances_to_silver_lake
@@ -87,7 +86,6 @@ if __name__ == "__main__":
     print("Total distance:", distance)
 
     if HAS_NX_MPL:
-
         import networkx as nx
         import matplotlib.pyplot as plt
 

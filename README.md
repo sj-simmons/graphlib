@@ -24,11 +24,13 @@ This project implements an undirected graph data structure with search algorithm
 **Graph generation functions:**
 - `complete_(graph, n=10, weight_range=(1, 10), seed=None)` - Generate a complete graph K_n
 - `watts_strogatz_(graph, n=20, k=4, beta=0.3, weight_range=(1, 10), seed=None)` - Generate a Watts-Strogatz small-world graph
+- `barabasi_albert_(graph, n=100, m=2, weight_range=(1, 10), seed=None)` - Generate a Barabási–Albert scale-free network graph
 - `twenty_(graph, weighted=True, more_edges=True)` - Create a 20-node test graph with multiple paths
 
 **Visualization functions:**
 - `graph2nx(graph)` - Convert UndirectedGraph to networkx.Graph object
 - `nx2ax(nx_graph, ax, seed=42, show_weights=True, pos=None)` - Draw networkx graph on matplotlib axis
+- `largenx2ax(nx_graph, ax, seed=42, pos=None)` - Draw large networkx graphs without labels for better visualization
 - `HAS_NX_MPL` - Boolean flag indicating if matplotlib and networkx are available
 
 ### uninformed_search.py
@@ -37,8 +39,8 @@ This project implements an undirected graph data structure with search algorithm
 - Inherits all methods from UndirectedGraph_
 - `dfs(start_vertex, goal_vertex)` - Depth-First Search (iterative)
 - `bfs(start_vertex, goal_vertex)` - Breadth-First Search
-- `ucs_(start_vertex, goal_vertex)` - Uniform Cost Search (basic implementation)
-- `ucs(start_vertex, goal_vertex)` - Uniform Cost Search (optimized implementation)
+- `ucs_(start_vertex, goal_vertex)` - Uniform Cost Search (basic implementation for educational purposes)
+- `ucs(start_vertex, goal_vertex)` - Uniform Cost Search (optimized implementation using priority queue)
 - `all_simple_paths(start_vertex, goal_vertex)` - Find all simple paths between vertices
 
 ### informed_search.py
@@ -47,7 +49,7 @@ This project implements an undirected graph data structure with search algorithm
 - Inherits all methods from UndirectedGraph_
 - `greedy(start_vertex, goal_vertex, heuristic)` - Greedy best-first search using heuristic estimates
 - `astar(start_vertex, goal_vertex, heuristic)` - A* search algorithm using f(n) = g(n) + h(n)
-- `astar2(start_vertex, goal_vertex, heuristic)` - A* search with efficiency metrics tracking
+- `astar2(start_vertex, goal_vertex, heuristic)` - A* search with additional efficiency metrics tracking (nodes expanded, path cost, heuristic accuracy)
 
 ### tree.py
 
@@ -133,9 +135,9 @@ The project includes a 20-node test graph with weighted edges to demonstrate dif
 
 ## Class Hierarchy
 
-All `UndirectedGraph` classes in different files inherit from the base `UndirectedGraph_` class in `graph.py`:
-- `uninformed_search.UndirectedGraph` adds uninformed search algorithms (DFS, BFS, UCS)
-- `informed_search.UndirectedGraph` adds informed search algorithms (Greedy, A*)
-- `tree.UndirectedGraph` adds tree algorithms (DFS tree, BFS tree, Prim's MST, Shortest Path Tree)
+- `graph.UndirectedGraph_` (base class with core graph operations)
+- `uninformed_search.UndirectedGraph` extends `graph.UndirectedGraph_` (adds DFS, BFS, UCS search algorithms)
+- `informed_search.UndirectedGraph` extends `uninformed_search.UndirectedGraph` (adds Greedy, A* informed search algorithms)
+- `tree.UndirectedGraph` extends `graph.UndirectedGraph_` (adds tree algorithms: DFS tree, BFS tree, Prim's MST, Shortest Path Tree)
 
 Each extension provides specialized functionality while maintaining the core graph operations.

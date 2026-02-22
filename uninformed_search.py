@@ -274,8 +274,7 @@ if __name__ == "__main__":
             fig, axes = plt.subplots(1, 3, figsize=(18, 6))
 
             # Convert the graph to networkx for visualization using graph.py's function
-            nx_graph = graph2nx(graph)
-            nx_graph = graph2nx(graph) if len(graph) <= 40 else graph2nx(graph)
+            nx_graph = graph2nx(graph) if len(graph) < 40 else graph2nx(graph)
 
             # Use a consistent layout for all subplots
             pos = nx.spring_layout(nx_graph, seed=42)
@@ -284,10 +283,10 @@ if __name__ == "__main__":
                 ax = axes[i]
 
                 # Draw the base graph using nx2ax from graph.py with the precomputed layout
-                if len(graph) <= 40:
-                    nx2ax(nx_graph, ax, seed=42, show_weights=True, pos=pos)
+                if len(graph) < 40:
+                    node_size = nx2ax(nx_graph, ax, seed=42, show_weights=True, pos=pos)
                 else:
-                    largenx2ax(nx_graph, ax, seed=42, pos=pos)
+                    node_size = largenx2ax(nx_graph, ax, seed=42, pos=pos)
 
                 # Highlight the path if found
                 if path:
@@ -298,7 +297,7 @@ if __name__ == "__main__":
                         pos,
                         ax=ax,
                         edgelist=path_edges,
-                        edge_color="skyblue" if len(graph) < 40 else "red",
+                        edge_color="lightsteelblue" if len(graph) < 40 else "red",
                         width=3 if len(graph) < 40 else 2,
                         alpha=0.5,
                     )
@@ -309,7 +308,7 @@ if __name__ == "__main__":
                         ax=ax,
                         nodelist=path,
                         node_color="lightsteelblue" if len(graph) < 40 else "red",
-                        node_size=600 if len(graph) < 40 else 20,
+                        node_size=node_size,
                         edgecolors="black",
                     )
                     # Highlight start and goal nodes
@@ -319,7 +318,7 @@ if __name__ == "__main__":
                         ax=ax,
                         nodelist=[start_vertex, goal_vertex],
                         node_color="lightskyblue" if len(graph) < 40 else "red",
-                        node_size=700 if len(graph) < 40 else 20,
+                        node_size=node_size,
                         edgecolors="black",
                     )
 
@@ -345,4 +344,4 @@ if __name__ == "__main__":
             plt.show()
 
     demo(30)
-    demo(300)
+    demo(400)

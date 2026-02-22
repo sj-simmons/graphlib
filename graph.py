@@ -524,6 +524,9 @@ try:
         if pos is None:
             pos = nx.spring_layout(nx_graph, seed=seed)
 
+        max_label_len = max(len(str(node)) for node in list(nx_graph))
+        node_size = 300 + max(max_label_len - 2, 0) * 300
+
         # Plot graph
         nx.draw(
             nx_graph,
@@ -531,7 +534,7 @@ try:
             ax=ax,
             with_labels=True,
             node_color="lightgray",
-            node_size=400 + max(len(str(node)) for node in list(nx_graph)) * 100,
+            node_size=node_size,
             font_size=10,
             font_weight="bold",
             edge_color="gray",
@@ -559,7 +562,7 @@ try:
                 bbox=dict(alpha=0.7, facecolor="white", edgecolor="none"),
             )
 
-        return pos
+        return node_size
 
     def largenx2ax(nx_graph: "nx.Graph", ax, seed=42, pos=None):
         """
@@ -575,6 +578,8 @@ try:
         if pos is None:
             pos = nx.spring_layout(nx_graph, seed=seed)
 
+        node_size = 20
+
         # Plot graph without labels
         nx.draw(
             nx_graph,
@@ -582,7 +587,7 @@ try:
             ax=ax,
             with_labels=False,  # No node labels for large graphs
             node_color="lightgray",
-            node_size=20,  # Smaller nodes for large graphs
+            node_size=node_size,  # Smaller nodes for large graphs
             font_size=8,
             font_weight="bold",
             edge_color="gray",
@@ -591,7 +596,7 @@ try:
             alpha=0.7,  # Slightly transparent for better visualization
         )
 
-        return pos
+        return node_size
 
 except ImportError as e:
     print(f"Required GUI visualization libraries not found: {e}")
