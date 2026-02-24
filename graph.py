@@ -308,6 +308,81 @@ def watts_strogatz_(
     return graph
 
 
+def triangle_free_(
+    graph: T,
+    n: int = 20,
+    edge_probability: float = 0.3,
+    weight_range: Tuple[Union[int, float], Union[int, float]] = (1, 10),
+    seed: Optional[int] = None,
+) -> T:
+    """
+    Generate a triangle-free undirected graph.
+
+    A triangle-free graph is an undirected graph in which no three vertices form a triangle
+    (i.e., no three vertices are all pairwise adjacent).
+
+    Args:
+        graph: An empty instance of a subclass of UndirectedGraph_ to populate
+        n: Number of nodes in the graph
+        edge_probability: Probability of adding an edge between two vertices,
+                          as long as it doesn't create a triangle (0 <= edge_probability <= 1)
+        weight_range: Tuple (min_weight, max_weight) for edge weights
+        seed: Random seed for reproducibility
+
+    Returns:
+        T: The populated triangle-free graph
+
+    Raises:
+        ValueError: If parameters are invalid
+        AssertionError: If graph is not empty
+    """
+    assert len(graph) == 0, "You probably wanted to start with an empty graph!"
+
+    if n <= 0:
+        raise ValueError("n must be positive")
+    if edge_probability < 0 or edge_probability > 1:
+        raise ValueError("edge_probability must be between 0 and 1")
+    if weight_range[0] > weight_range[1]:
+        raise ValueError("min_weight must be <= max_weight")
+
+    # Initialize random number generator
+    rng = random.Random(seed)
+
+    # Add vertices
+    for i in range(n):
+        graph.add_vertex(i)
+
+    # Track adjacency matrix for efficient triangle checking
+    # Using a set of edges for O(1) lookup
+    edges_set: Set[Tuple[int, int]] = set()
+
+    # Try to add edges while maintaining triangle-free property
+    for i in range(n):
+        for j in range(i + 1, n):
+            # Check if adding edge (i, j) would create a triangle
+            would_create_triangle = False
+
+            # For each potential third vertex k
+            for k in range(n):
+                if k == i or k == j:
+                    continue
+
+                # Check if both edges (i, k) and (j, k) exist
+                if (i, k) in edges_set or (k, i) in edges_set:
+                    if (j, k) in edges_set or (k, j) in edges_set:
+                        would_create_triangle = True
+                        break
+
+            # If no triangle would be created and random chance says to add edge
+            if not would_create_triangle and rng.random() < edge_probability:
+                # Add edge with random weight
+                weight = round(rng.uniform(weight_range[0], weight_range[1]), 2)
+                graph.add_edge(i, j, weight)
+                edges_set.add((i, j))
+
+    return graph
+
+
 def barabasi_albert_(
     graph: T,
     n: int = 100,
@@ -631,6 +706,23 @@ if __name__ == "__main__":
     print(f"Number of vertices: {len(graph_ba)}")
     print(f"Number of edges: {len(graph_ba.get_edges())}")
 
+    # Test triangle-free graphs
+    print("\nTesting triangle-free graphs:")
+
+    # Small triangle-free graph (less than 40 nodes)
+    n_tf_small = 30
+    graph_tf_small = triangle_free_(UndirectedGraph_(), n=n_tf_small, edge_probability=0.4, seed=42)
+    print(f"Small triangle-free graph (n={n_tf_small}):")
+    print(f"Number of vertices: {len(graph_tf_small)}")
+    print(f"Number of edges: {len(graph_tf_small.get_edges())}")
+
+    # Large triangle-free graph (200 nodes)
+    n_tf_large = 100
+    graph_tf_large = triangle_free_(UndirectedGraph_(), n=n_tf_large, edge_probability=0.2, seed=42)
+    print(f"Large triangle-free graph (n={n_tf_large}):")
+    print(f"Number of vertices: {len(graph_tf_large)}")
+    print(f"Number of edges: {len(graph_tf_large.get_edges())}")
+
     if HAS_NX_MPL:
         # Figure 1: Complete graph and 20-node graph
         fig1, axes1 = plt.subplots(1, 2, figsize=(16, 8))
@@ -703,6 +795,27 @@ if __name__ == "__main__":
         largenx2ax(graph2nx(graph_ba_large), ax6, seed=42)
         ax6.set_title(f"Large Barabási–Albert (n={n_ba_large}, m={m_large})")
         ax6.axis("off")
+
+        plt.tight_layout()
+        plt.show()
+
+        # Figure 4: Triangle-free graphs of different sizes
+        print("\nGenerating triangle-free graphs for Figure 4...\n")
+
+        # Create Figure 4
+        fig4, axes4 = plt.subplots(1, 2, figsize=(16, 8))
+
+        # Small triangle-free graph (with labels and weights)
+        ax7 = axes4[0]
+        nx2ax(graph2nx(graph_tf_small), ax7, seed=42, show_weights=True)
+        ax7.set_title(f"Small Triangle-Free Graph (n={n_tf_small})")
+        ax7.axis("off")
+
+        # Large triangle-free graph (without labels, using largenx2ax)
+        ax8 = axes4[1]
+        largenx2ax(graph2nx(graph_tf_large), ax8, seed=42)
+        ax8.set_title(f"Large Triangle-Free Graph (n={n_tf_large})")
+        ax8.axis("off")
 
         plt.tight_layout()
         plt.show()
