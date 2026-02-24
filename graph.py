@@ -316,21 +316,22 @@ def triangle_free_(
     seed: Optional[int] = None,
 ) -> T:
     """
-    Generate a triangle-free undirected graph.
+    Generate a connected, triangle-free, planar undirected graph.
 
-    A triangle-free graph is an undirected graph in which no three vertices form a triangle
-    (i.e., no three vertices are all pairwise adjacent).
+    A triangle-free graph is an undirected graph in which no three vertices
+    form a triangle (i.e., no three vertices are all pairwise adjacent).
 
     Args:
         graph: An empty instance of a subclass of UndirectedGraph_ to populate
         n: Number of nodes in the graph
         edge_probability: Probability of adding an edge between two vertices,
-                          as long as it doesn't create a triangle (0 <= edge_probability <= 1)
+                          as long as it doesn't create a triangle or violate planarity
+                          (0 <= edge_probability <= 1)
         weight_range: Tuple (min_weight, max_weight) for edge weights
         seed: Random seed for reproducibility
 
     Returns:
-        T: The populated triangle-free graph
+        T: The populated connected, triangle-free, planar graph
 
     Raises:
         ValueError: If parameters are invalid
@@ -352,33 +353,66 @@ def triangle_free_(
     for i in range(n):
         graph.add_vertex(i)
 
-    # Track adjacency matrix for efficient triangle checking
-    # Using a set of edges for O(1) lookup
-    edges_set: Set[Tuple[int, int]] = set()
+    # Create a bipartite partition
+    partition_a = list(range(0, n, 2))
+    partition_b = list(range(1, n, 2))
 
-    # Try to add edges while maintaining triangle-free property
-    for i in range(n):
-        for j in range(i + 1, n):
-            # Check if adding edge (i, j) would create a triangle
-            would_create_triangle = False
+    # Ensure connectivity: create a spanning tree that's bipartite
+    # Connect vertices in a chain alternating between partitions
+    for i in range(n - 1):
+        u = i
+        v = i + 1
+        weight = round(rng.uniform(weight_range[0], weight_range[1]), 2)
+        graph.add_edge(u, v, weight)
 
-            # For each potential third vertex k
-            for k in range(n):
-                if k == i or k == j:
-                    continue
-
-                # Check if both edges (i, k) and (j, k) exist
-                if (i, k) in edges_set or (k, i) in edges_set:
-                    if (j, k) in edges_set or (k, j) in edges_set:
-                        would_create_triangle = True
-                        break
-
-            # If no triangle would be created and random chance says to add edge
-            if not would_create_triangle and rng.random() < edge_probability:
-                # Add edge with random weight
+    # Add additional bipartite edges (these are guaranteed triangle-free)
+    # Only add edges between vertices in different partitions
+    for u in partition_a:
+        for v in partition_b:
+            # Skip if vertices are too far apart for planarity
+            if abs(u - v) > 3:
+                continue
+                
+            # Skip if edge already exists
+            if graph.has_edge(u, v):
+                continue
+                
+            # Add edge with probability edge_probability
+            if rng.random() < edge_probability:
                 weight = round(rng.uniform(weight_range[0], weight_range[1]), 2)
-                graph.add_edge(i, j, weight)
-                edges_set.add((i, j))
+                graph.add_edge(u, v, weight)
+
+    # Add triangle-free verification
+    def has_triangle(g: T) -> bool:
+        """
+        Check if the graph contains any triangle (3-cycle).
+        
+        Args:
+            g: The graph to check
+            
+        Returns:
+            bool: True if a triangle exists, False otherwise
+        """
+        vertices = g.get_vertices()
+        
+        # For each vertex, check pairs of its neighbors
+        for v in vertices:
+            neighbors = g.get_neighbors(v)
+            # Check all pairs of neighbors
+            for i in range(len(neighbors)):
+                for j in range(i + 1, len(neighbors)):
+                    if g.has_edge(neighbors[i], neighbors[j]):
+                        # Found a triangle: v, neighbors[i], neighbors[j]
+                        return True
+        return False
+
+    # Verify the graph is triangle-free
+    if has_triangle(graph):
+        raise RuntimeError(
+            "Generated graph contains a triangle! "
+            "This violates the triangle-free property. "
+            f"Graph has {len(graph)} vertices and {len(graph.get_edges())} edges."
+        )
 
     return graph
 
@@ -710,7 +744,7 @@ if __name__ == "__main__":
     print("\nTesting triangle-free graphs:")
 
     # Small triangle-free graph (less than 40 nodes)
-    n_tf_small = 30
+    n_tf_small = 20
     graph_tf_small = triangle_free_(UndirectedGraph_(), n=n_tf_small, edge_probability=0.4, seed=42)
     print(f"Small triangle-free graph (n={n_tf_small}):")
     print(f"Number of vertices: {len(graph_tf_small)}")
@@ -807,7 +841,8 @@ if __name__ == "__main__":
 
         # Small triangle-free graph (with labels and weights)
         ax7 = axes4[0]
-        nx2ax(graph2nx(graph_tf_small), ax7, seed=42, show_weights=True)
+        g = graph2nx(graph_tf_small)
+        nx2ax(g, ax7, seed=42, show_weights=True, pos=nx.planar_layout(g))
         ax7.set_title(f"Small Triangle-Free Graph (n={n_tf_small})")
         ax7.axis("off")
 
