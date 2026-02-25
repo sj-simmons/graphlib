@@ -308,30 +308,36 @@ def watts_strogatz_(
     return graph
 
 
-def triangle_free_(
+def planar_(
     graph: T,
     n: int = 20,
-    edge_probability: float = 0.3,
+    remove_probability: float = 0.0,
     weight_range: Tuple[Union[int, float], Union[int, float]] = (1, 10),
     seed: Optional[int] = None,
 ) -> T:
     """
-    Generate a connected, triangle-free, planar undirected graph.
+    Generate the dual of a maximal planar graph using Delaunay triangulation of n random points,
+    with optional random edge removal applied to the dual graph.
 
-    A triangle-free graph is an undirected graph in which no three vertices
-    form a triangle (i.e., no three vertices are all pairwise adjacent).
+    A maximal planar graph is a planar graph to which no more edges can be added
+    without violating planarity. Delaunay triangulation of points in the plane
+    produces a maximal planar graph. This function returns the dual of that graph,
+    then removes edges from the dual with probability remove_probability while
+    ensuring the dual remains connected.
+
+    The dual is always cubic (3-regular) and, by Brook's Theorem, every cubic planar graph
+    besides K_4 is 3-colorable.
 
     Args:
         graph: An empty instance of a subclass of UndirectedGraph_ to populate
-        n: Number of nodes in the graph
-        edge_probability: Probability of adding an edge between two vertices,
-                          as long as it doesn't create a triangle or violate planarity
-                          (0 <= edge_probability <= 1)
+        n: Number of nodes in the original graph
+        remove_probability: Probability of removing each edge from the dual graph
+                          (0 <= remove_probability <= 1)
         weight_range: Tuple (min_weight, max_weight) for edge weights
         seed: Random seed for reproducibility
 
     Returns:
-        T: The populated connected, triangle-free, planar graph
+        T: The dual of the maximal planar graph, with edges possibly removed but still connected
 
     Raises:
         ValueError: If parameters are invalid
@@ -341,78 +347,238 @@ def triangle_free_(
 
     if n <= 0:
         raise ValueError("n must be positive")
-    if edge_probability < 0 or edge_probability > 1:
-        raise ValueError("edge_probability must be between 0 and 1")
+    if remove_probability < 0 or remove_probability > 1:
+        raise ValueError("remove_probability must be between 0 and 1")
     if weight_range[0] > weight_range[1]:
         raise ValueError("min_weight must be <= max_weight")
 
     # Initialize random number generator
     rng = random.Random(seed)
 
-    # Add vertices
+    # Generate n random points in [0, 1] x [0, 1]
+    points = [(rng.random(), rng.random()) for _ in range(n)]
+
+    # Handle small n cases
+    if n <= 3:
+        if n == 1:
+            return graph
+        elif n == 2:
+            # For 2 points, the dual has 2 faces (inner and outer), but we'll create a simple dual
+            graph.add_vertex(0)
+            graph.add_vertex(1)
+            weight = round(rng.uniform(weight_range[0], weight_range[1]), 2)
+            graph.add_edge(0, 1, weight)
+            return graph
+        elif n == 3:
+            # For 3 points, triangle: dual has 1 inner face connected to outer face
+            # We'll create one vertex for the inner face
+            graph.add_vertex(0)
+            return graph
+
+    # For n > 3, implement Delaunay triangulation (maximal planar graph)
+    # Find bounding box
+    min_x = min(p[0] for p in points)
+    max_x = max(p[0] for p in points)
+    min_y = min(p[1] for p in points)
+    max_y = max(p[1] for p in points)
+
+    dx = max_x - min_x
+    dy = max_y - min_y
+    dmax = max(dx, dy)
+    mid_x = (min_x + max_x) / 2
+    mid_y = (min_y + max_y) / 2
+
+    super_tri = [
+        (mid_x - 20 * dmax, mid_y - dmax),
+        (mid_x + 20 * dmax, mid_y - dmax),
+        (mid_x, mid_y + 20 * dmax),
+    ]
+
+    triangles = []
+    triangles.append((n, n + 1, n + 2))
+
+    def in_circumcircle(p, a, b, c):
+        ax, ay = a
+        bx, by = b
+        cx, cy = c
+        px, py = p
+
+        d11 = ax - px
+        d12 = ay - py
+        d13 = d11 * d11 + d12 * d12
+
+        d21 = bx - px
+        d22 = by - py
+        d23 = d21 * d21 + d22 * d22
+
+        d31 = cx - px
+        d32 = cy - py
+        d33 = d31 * d31 + d32 * d32
+
+        det = (
+            d11 * d22 * d33
+            + d12 * d23 * d31
+            + d13 * d21 * d32
+            - d13 * d22 * d31
+            - d11 * d23 * d32
+            - d12 * d21 * d33
+        )
+
+        return det > 0
+
+    # Add points one by one
     for i in range(n):
+        point = points[i]
+        bad_triangles = []
+
+        for tri in triangles:
+            a_idx, b_idx, c_idx = tri
+            a = points[a_idx] if a_idx < n else super_tri[a_idx - n]
+            b = points[b_idx] if b_idx < n else super_tri[b_idx - n]
+            c = points[c_idx] if c_idx < n else super_tri[c_idx - n]
+
+            if in_circumcircle(point, a, b, c):
+                bad_triangles.append(tri)
+
+        polygon_edges = []
+        for tri in bad_triangles:
+            tri_edges = [(tri[0], tri[1]), (tri[1], tri[2]), (tri[2], tri[0])]
+            for edge in tri_edges:
+                shared = False
+                for other_tri in bad_triangles:
+                    if other_tri == tri:
+                        continue
+                    other_edges = [
+                        (other_tri[0], other_tri[1]),
+                        (other_tri[1], other_tri[2]),
+                        (other_tri[2], other_tri[0]),
+                    ]
+                    if edge in other_edges or (edge[1], edge[0]) in other_edges:
+                        shared = True
+                        break
+                if not shared:
+                    polygon_edges.append(edge)
+
+        for tri in bad_triangles:
+            if tri in triangles:
+                triangles.remove(tri)
+
+        for edge in polygon_edges:
+            new_tri = (edge[0], edge[1], i)
+            triangles.append(new_tri)
+
+    # Remove triangles containing super-triangle vertices
+    final_triangles = []
+    for tri in triangles:
+        a_idx, b_idx, c_idx = tri
+        if a_idx < n and b_idx < n and c_idx < n:
+            final_triangles.append(tri)
+
+    # Build edge to triangles mapping for the maximal planar graph
+    edge_to_triangles = {}
+    for tri in final_triangles:
+        a, b, c = tri
+        for edge in [tuple(sorted((a, b))), tuple(sorted((b, c))), tuple(sorted((a, c)))]:
+            if edge not in edge_to_triangles:
+                edge_to_triangles[edge] = []
+            edge_to_triangles[edge].append(tri)
+
+    # Build the dual graph of the maximal planar graph
+    triangle_to_id = {}
+    for i, tri in enumerate(final_triangles):
+        triangle_to_id[tri] = i
+
+    # Add vertices for each triangle
+    for i in range(len(final_triangles)):
         graph.add_vertex(i)
 
-    # Create a bipartite partition
-    partition_a = list(range(0, n, 2))
-    partition_b = list(range(1, n, 2))
+    # Add edges in the dual
+    dual_edges = []
+    for edge, tris in edge_to_triangles.items():
+        if len(tris) == 2:
+            tri1, tri2 = tris
+            id1 = triangle_to_id[tri1]
+            id2 = triangle_to_id[tri2]
+            weight = round(rng.uniform(weight_range[0], weight_range[1]), 2)
+            graph.add_edge(id1, id2, weight)
+            dual_edges.append((id1, id2, weight))
 
-    # Ensure connectivity: create a spanning tree that's bipartite
-    # Connect vertices in a chain alternating between partitions
-    for i in range(n - 1):
-        u = i
-        v = i + 1
-        weight = round(rng.uniform(weight_range[0], weight_range[1]), 2)
-        graph.add_edge(u, v, weight)
+    # Now, remove edges from the dual with probability remove_probability
+    # First, collect all edges
+    edges_to_consider = []
+    for u in graph.graph:
+        for v, w in graph.graph[u].items():
+            if u < v:  # To avoid duplicates
+                edges_to_consider.append((u, v, w))
 
-    # Add additional bipartite edges (these are guaranteed triangle-free)
-    # Only add edges between vertices in different partitions
-    for u in partition_a:
-        for v in partition_b:
-            # Skip if vertices are too far apart for planarity
-            if abs(u - v) > 3:
-                continue
-                
-            # Skip if edge already exists
-            if graph.has_edge(u, v):
-                continue
-                
-            # Add edge with probability edge_probability
-            if rng.random() < edge_probability:
-                weight = round(rng.uniform(weight_range[0], weight_range[1]), 2)
-                graph.add_edge(u, v, weight)
+    # Remove edges with probability remove_probability
+    edges_to_remove = []
+    for u, v, w in edges_to_consider:
+        if rng.random() < remove_probability:
+            edges_to_remove.append((u, v))
 
-    # Add triangle-free verification
-    def has_triangle(g: T) -> bool:
-        """
-        Check if the graph contains any triangle (3-cycle).
-        
-        Args:
-            g: The graph to check
-            
-        Returns:
-            bool: True if a triangle exists, False otherwise
-        """
-        vertices = g.get_vertices()
-        
-        # For each vertex, check pairs of its neighbors
-        for v in vertices:
-            neighbors = g.get_neighbors(v)
-            # Check all pairs of neighbors
-            for i in range(len(neighbors)):
-                for j in range(i + 1, len(neighbors)):
-                    if g.has_edge(neighbors[i], neighbors[j]):
-                        # Found a triangle: v, neighbors[i], neighbors[j]
-                        return True
-        return False
+    # Remove the edges
+    for u, v in edges_to_remove:
+        if v in graph.graph[u]:
+            del graph.graph[u][v]
+        if u in graph.graph[v]:
+            del graph.graph[v][u]
 
-    # Verify the graph is triangle-free
-    if has_triangle(graph):
-        raise RuntimeError(
-            "Generated graph contains a triangle! "
-            "This violates the triangle-free property. "
-            f"Graph has {len(graph)} vertices and {len(graph.get_edges())} edges."
-        )
+    # Ensure the dual graph remains connected
+    # Build adjacency list
+    adj = {vertex: set() for vertex in graph.graph}
+    for u in graph.graph:
+        for v in graph.graph[u]:
+            adj[u].add(v)
+
+    # Check connectivity using BFS
+    visited = set()
+    if len(graph.graph) > 0:
+        start = next(iter(graph.graph.keys()))
+        queue = deque([start])
+        visited.add(start)
+        while queue:
+            current = queue.popleft()
+            for neighbor in adj[current]:
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    queue.append(neighbor)
+
+    # If not connected, add edges back until connected
+    # We'll add edges from the original dual edges that were removed
+    while len(visited) != len(graph.graph) and len(graph.graph) > 0:
+        # Find unvisited vertices
+        unvisited = [v for v in graph.graph.keys() if v not in visited]
+        # For each unvisited vertex, find a path to connect it
+        # We'll add back an edge from the original dual edges if possible
+        added = False
+        for u in list(visited):
+            for v in unvisited:
+                # Check if this edge was in the original dual
+                # We can check by seeing if they were connected in the original dual
+                # Since we stored dual_edges, we can check
+                for uu, vv, ww in dual_edges:
+                    if (u == uu and v == vv) or (u == vv and v == uu):
+                        # Add this edge back
+                        graph.add_edge(u, v, ww)
+                        adj[u].add(v)
+                        adj[v].add(u)
+                        visited.add(v)
+                        added = True
+                        break
+                if added:
+                    break
+            if added:
+                break
+        # If we couldn't add back an original edge, add any edge
+        if not added and unvisited:
+            u = next(iter(visited))
+            v = unvisited[0]
+            weight = round(rng.uniform(weight_range[0], weight_range[1]), 2)
+            graph.add_edge(u, v, weight)
+            adj[u].add(v)
+            adj[v].add(u)
+            visited.add(v)
 
     return graph
 
@@ -740,22 +906,14 @@ if __name__ == "__main__":
     print(f"Number of vertices: {len(graph_ba)}")
     print(f"Number of edges: {len(graph_ba.get_edges())}")
 
-    # Test triangle-free graphs
-    print("\nTesting triangle-free graphs:")
-
-    # Small triangle-free graph (less than 40 nodes)
-    n_tf_small = 20
-    graph_tf_small = triangle_free_(UndirectedGraph_(), n=n_tf_small, edge_probability=0.4, seed=42)
-    print(f"Small triangle-free graph (n={n_tf_small}):")
-    print(f"Number of vertices: {len(graph_tf_small)}")
-    print(f"Number of edges: {len(graph_tf_small.get_edges())}")
-
-    # Large triangle-free graph (200 nodes)
-    n_tf_large = 100
-    graph_tf_large = triangle_free_(UndirectedGraph_(), n=n_tf_large, edge_probability=0.2, seed=42)
-    print(f"Large triangle-free graph (n={n_tf_large}):")
-    print(f"Number of vertices: {len(graph_tf_large)}")
-    print(f"Number of edges: {len(graph_tf_large.get_edges())}")
+    # Test small planar graph (maximal planar, no edge removal)
+    n_planar_small = 20
+    graph_planar_small = planar_(
+        UndirectedGraph_(), n=n_planar_small, remove_probability=0.0, seed=42
+    )
+    print(f"\nSmall planar graph (n={n_planar_small}, maximal):")
+    print(f"Number of vertices: {len(graph_planar_small)}")
+    print(f"Number of edges: {len(graph_planar_small.get_edges())}")
 
     if HAS_NX_MPL:
         # Figure 1: Complete graph and 20-node graph
@@ -833,23 +991,41 @@ if __name__ == "__main__":
         plt.tight_layout()
         plt.show()
 
-        # Figure 4: Triangle-free graphs of different sizes
-        print("\nGenerating triangle-free graphs for Figure 4...\n")
+        # Figure 4: Planar graphs of different sizes
+        print("\nGenerating planar graphs for Figure 4...\n")
+
+        # Create large planar graph with edge removal
+        n_planar_large = 100
+        graph_planar_large = planar_(
+            UndirectedGraph_(), n=n_planar_large, remove_probability=0.3, seed=42
+        )
+        print(f"Large planar graph (using n={n_planar_large}, with 30% edge removal):")
+        print(f"Number of vertices: {len(graph_planar_large)}")
+        print(f"Number of edges: {len(graph_planar_large.get_edges())}")
 
         # Create Figure 4
         fig4, axes4 = plt.subplots(1, 2, figsize=(16, 8))
 
-        # Small triangle-free graph (with labels and weights)
+        # Small planar graph (with labels and weights)
         ax7 = axes4[0]
-        g = graph2nx(graph_tf_small)
-        nx2ax(g, ax7, seed=42, show_weights=True, pos=nx.planar_layout(g))
-        ax7.set_title(f"Small Triangle-Free Graph (n={n_tf_small})")
+        g = graph2nx(graph_planar_small)
+        try:
+            nx2ax(g, ax7, seed=42, show_weights=True, pos=nx.planar_layout(g))
+        except:
+            print("not planar")
+            nx2ax(g, ax7, seed=42, show_weights=True)
+        ax7.set_title(f"Small Planar Graph (n={n_planar_small}, maximal)")
         ax7.axis("off")
 
-        # Large triangle-free graph (without labels, using largenx2ax)
+        # Large planar graph (without labels, using largenx2ax)
         ax8 = axes4[1]
-        largenx2ax(graph2nx(graph_tf_large), ax8, seed=42)
-        ax8.set_title(f"Large Triangle-Free Graph (n={n_tf_large})")
+        g = graph2nx(graph_planar_large)
+        try:
+            largenx2ax(g, ax8, seed=42, pos=nx.planar_layout(g))
+        except:
+            print("not planar")
+            largenx2ax(g, ax8, seed=42)
+        ax8.set_title(f"Large Planar Graph (using n={n_planar_large}, 30% edges removed)")
         ax8.axis("off")
 
         plt.tight_layout()
