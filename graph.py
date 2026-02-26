@@ -478,7 +478,11 @@ def planar_(
     edge_to_triangles = {}
     for tri in final_triangles:
         a, b, c = tri
-        for edge in [tuple(sorted((a, b))), tuple(sorted((b, c))), tuple(sorted((a, c)))]:
+        for edge in [
+            tuple(sorted((a, b))),
+            tuple(sorted((b, c))),
+            tuple(sorted((a, c))),
+        ]:
             if edge not in edge_to_triangles:
                 edge_to_triangles[edge] = []
             edge_to_triangles[edge].append(tri)
@@ -839,7 +843,7 @@ try:
 
         return node_size
 
-    def largenx2ax(nx_graph: "nx.Graph", ax, seed=42, pos=None):
+    def largenx2ax(nx_graph: "nx.Graph", ax, seed=42, pos=None, tiny=True):
         """
         Display large graphs without node labels or edge weights for better visualization.
 
@@ -853,7 +857,7 @@ try:
         if pos is None:
             pos = nx.spring_layout(nx_graph, seed=seed)
 
-        node_size = 20
+        node_size = 20 if tiny else 40
 
         # Plot graph without labels
         nx.draw(
@@ -1025,7 +1029,9 @@ if __name__ == "__main__":
         except:
             print("not planar")
             largenx2ax(g, ax8, seed=42)
-        ax8.set_title(f"Large Planar Graph (using n={n_planar_large}, 30% edges removed)")
+        ax8.set_title(
+            f"Large Planar Graph (using n={n_planar_large}, 30% edges removed)"
+        )
         ax8.axis("off")
 
         plt.tight_layout()
