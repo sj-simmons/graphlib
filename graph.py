@@ -915,7 +915,9 @@ if __name__ == "__main__":
     graph_planar_small = planar_(
         UndirectedGraph_(), n=n_planar_small, remove_probability=0.0, seed=42
     )
-    print(f"\nSmall planar graph (n={n_planar_small}, maximal):")
+    print(
+        f"\nSmall planar graph (n={n_planar_small}: {len(graph_planar_small)} nodes, maximal):"
+    )
     print(f"Number of vertices: {len(graph_planar_small)}")
     print(f"Number of edges: {len(graph_planar_small.get_edges())}")
 
@@ -1003,7 +1005,9 @@ if __name__ == "__main__":
         graph_planar_large = planar_(
             UndirectedGraph_(), n=n_planar_large, remove_probability=0.3, seed=42
         )
-        print(f"Large planar graph (using n={n_planar_large}, with 30% edge removal):")
+        print(
+            f"Large planar graph (using n={n_planar_large}: {len(graph_planar_large)} nodes, with 30% edge removal):"
+        )
         print(f"Number of vertices: {len(graph_planar_large)}")
         print(f"Number of edges: {len(graph_planar_large.get_edges())}")
 
