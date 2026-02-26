@@ -332,9 +332,17 @@ class CSP:
         use_degree: bool = True,
         use_lcv: bool = True,
         use_forward_checking: bool = True,
+        max_backtracks: int = 1_000_000,
     ) -> Tuple[Optional[Dict[Any, Any]], Dict[str, int]]:
         """
         Solve the CSP and return solution with statistics.
+
+        Args:
+            use_mrv: Use Minimum Remaining Values heuristic
+            use_degree: Use Degree heuristic (tie-breaker for MRV)
+            use_lcv: Use Least Constraining Value heuristic
+            use_forward_checking: Use forward checking to prune domains
+            max_backtracks: Maximum number of backtracks allowed before bailing out
 
         Returns:
             Tuple of (solution, stats) where stats contains:
@@ -344,6 +352,7 @@ class CSP:
         """
         # Statistics tracking
         self.stats = {"assignments": 0, "backtracks": 0, "checks": 0}
+        self.max_backtracks = max_backtracks
 
         # Call the appropriate backtracking function
         if use_forward_checking:
@@ -362,6 +371,10 @@ class CSP:
         """
         Recursive backtracking without forward checking with statistics.
         """
+        # Check if we've exceeded the maximum allowed backtracks
+        if self.stats["backtracks"] >= self.max_backtracks:
+            return None
+
         # If assignment is complete, return it
         if len(assignment) == len(self.variables):
             return assignment
@@ -386,6 +399,9 @@ class CSP:
                     return result
                 del assignment[var]
                 self.stats["backtracks"] += 1
+                # Check again after incrementing backtracks
+                if self.stats["backtracks"] >= self.max_backtracks:
+                    return None
 
         return None
 
@@ -400,6 +416,10 @@ class CSP:
         """
         Recursive backtracking with forward checking and statistics.
         """
+        # Check if we've exceeded the maximum allowed backtracks
+        if self.stats["backtracks"] >= self.max_backtracks:
+            return None
+
         # If assignment is complete, return it
         if len(assignment) == len(self.variables):
             return assignment
@@ -436,5 +456,8 @@ class CSP:
                     domains[v] = old_domains[v]
                 del assignment[var]
                 self.stats["backtracks"] += 1
+                # Check again after incrementing backtracks
+                if self.stats["backtracks"] >= self.max_backtracks:
+                    return None
 
         return None
