@@ -3,7 +3,8 @@ from typing import Any, Dict, List, Set, Optional, Tuple
 from graph import UndirectedGraph_
 import sys
 
-sys.setrecursionlimit(4000)
+sys.setrecursionlimit(2000)
+
 
 class GraphColoringCSP(CSP):
     """
@@ -41,7 +42,9 @@ class GraphColoringCSP(CSP):
                     return False
         return True
 
-    def visualize_solution(self, solution: Dict[Any, Any], title: str = "Graph Coloring"):
+    def visualize_solution(
+        self, solution: Dict[Any, Any], title: str = "Graph Coloring"
+    ):
         """
         Visualize the graph coloring solution if matplotlib is available.
 
@@ -71,7 +74,7 @@ class GraphColoringCSP(CSP):
                 color_map.append(color)
 
             pos = nx.spring_layout(nx_graph)
-            #pos = nx.planar_layout(nx_graph)
+            # pos = nx.planar_layout(nx_graph)
 
             # Draw graph
             fig, ax = plt.subplots(figsize=(10, 8))
@@ -82,10 +85,12 @@ class GraphColoringCSP(CSP):
 
             # Override with colored nodes
             nx.draw_networkx_nodes(
-                nx_graph, pos, ax=ax,
+                nx_graph,
+                pos,
+                ax=ax,
                 node_color=color_map,
                 node_size=node_size,
-                edgecolors='black'
+                edgecolors="black",
             )
 
             ax.set_title(f"{title}\n{self.num_colors}-coloring")
@@ -96,34 +101,30 @@ class GraphColoringCSP(CSP):
             print("Matplotlib or NetworkX not available for visualization")
             print("Solution:", solution)
 
-if __name__ == "__main__":
 
-    # Demonstrate the CSP solver on graph coloring problems.
-
-    from graph import planar_
-
-    print("Heuristic Comparison on Planar Graphs")
-
-    graph = planar_(UndirectedGraph_(), n=200, remove_probability=0, seed=1)
-    #graph = planar_(UndirectedGraph_(), n=300, remove_probability=0, seed=1)
-    #graph = planar_(UndirectedGraph_(), n=360, remove_probability=0.05, seed=1)
-    print(f"Coloring a graph of size {len(graph)}")
+def compare_heuristics(graph, num_colors, max_backtracks=1_000_000, display=True):
 
     heuristic_configs = [
-        ("No heuristics", False, False, False, True),  # Enable forward checking
-        ("MRV only", True, False, False, True),
-        ("MRV + Degree", True, True, False, True),
-        ("MRV + LCV", True, False, True, True),
-        ("All heuristics", True, True, True, True),
+        ("No heuristics", False, False, False, True, False),  # Enable forward checking
+        ("MRV only", True, False, False, True, False),
+        ("MRV + Degree", True, True, False, True, False),
+        ("MRV + LCV", True, False, True, True, False),
+        ("MRV + degree + LCV", True, True, True, True, False),
+        ("AC-3 only", False, False, False, True, True),
+        ("All heuristics", True, True, True, True, True),
     ]
 
     last_solution = None
-    for name, mrv, degree, lcv, fc in heuristic_configs:
-        csp = GraphColoringCSP(graph, num_colors=3)
-        # For "No heuristics", limit backtracks to prevent hanging
-        max_backtracks = 1_000_000 if name == "No heuristics" else None
-        solution, stats = csp.solve(use_mrv=mrv, use_degree=degree, use_lcv=lcv,
-                                   use_forward_checking=fc, max_backtracks=max_backtracks)
+    for name, mrv, degree, lcv, fc, ac3 in heuristic_configs:
+        csp = GraphColoringCSP(graph, num_colors=num_colors)
+        solution, stats = csp.solve(
+            use_mrv=mrv,
+            use_degree=degree,
+            use_lcv=lcv,
+            use_forward_checking=fc,
+            use_ac3=ac3,
+            max_backtracks=max_backtracks,
+        )
         if solution:
             # Double check that this a valid coloring
             assert csp.is_valid_coloring(solution)
@@ -131,10 +132,32 @@ if __name__ == "__main__":
             last_solution = solution
         else:
             found = "No"
-        print(f"   {name:20} | Solution: {found:4} | "
-              f"Assignments: {stats['assignments']:4} | "
-              f"Backtracks: {stats['backtracks']:3} | ",
-              f"Checks: {stats['checks']:3}")
+        print(
+            f"   {name:20} | Solution: {found:4} | "
+            f"Assignments: {stats['assignments']:4} | "
+            f"Backtracks: {stats['backtracks']:3} | ",
+            f"Checks: {stats['checks']:3}",
+        )
 
-    if last_solution:
+    if last_solution and display:
         csp.visualize_solution(last_solution, "Planar Graph Coloring")
+
+
+if __name__ == "__main__":
+
+    # Demonstrate the CSP solver on graph coloring problems.
+
+    from graph import complete_, planar_
+
+    print("\nQuick check on K5, which is 5- but not 4-colorable:")
+    print("4-coloring:")
+    compare_heuristics(complete_(UndirectedGraph_(), n=5), num_colors=4)
+    print("5-coloring:")
+    compare_heuristics(complete_(UndirectedGraph_(), n=5), num_colors=5)
+
+    print("\nHeuristic comparison on 3-colorable planar graphs:")
+    # graph = planar_(UndirectedGraph_(), n=200, remove_probability=0, seed=1)
+    graph = planar_(UndirectedGraph_(), n=300, remove_probability=0, seed=1)
+    graph = planar_(UndirectedGraph_(), n=360, remove_probability=0.05, seed=1)
+    print(f"3-coloring a graph of size {len(graph)}")
+    compare_heuristics(graph, num_colors=3)
