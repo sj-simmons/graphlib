@@ -390,12 +390,70 @@ class CSP:
                         return False
         return True
 
+    def _revise(self, xi: Any, xj: Any, domains: Dict[Any, Set[Any]]) -> bool:
+        """
+        Revise the domain of xi with respect to xj.
+        Returns True if the domain of xi was revised (reduced).
+        """
+        revised = False
+        to_remove = []
+
+        for x in domains[xi]:
+            # Check if there exists a value y in domain of xj such that (x, y) satisfies the constraint
+            # For graph coloring, the constraint is x != y
+            found = False
+            for y in domains[xj]:
+                if x != y:
+                    found = True
+                    break
+            if not found:
+                to_remove.append(x)
+                revised = True
+
+        for x in to_remove:
+            domains[xi].remove(x)
+
+        return revised
+
+    def ac3(self, domains: Optional[Dict[Any, Set[Any]]] = None) -> bool:
+        """
+        Enforce arc consistency using AC-3 algorithm.
+        Returns False if any domain becomes empty (inconsistent).
+
+        Args:
+            domains: Current domains. If None, initialize with full domains.
+
+        Returns:
+            True if arc consistency was enforced without empty domains, False otherwise.
+        """
+        if domains is None:
+            domains = {var: set(self.domain) for var in self.variables}
+
+        # Initialize queue with all arcs (both directions for each edge)
+        queue = []
+        for xi in self.variables:
+            for xj in self.constraints[xi]:
+                queue.append((xi, xj))
+
+        while queue:
+            xi, xj = queue.pop(0)
+            if self._revise(xi, xj, domains):
+                if len(domains[xi]) == 0:
+                    return False
+                # Add arcs (xk, xi) where xk is a neighbor of xi (except xj)
+                for xk in self.constraints[xi]:
+                    if xk != xj:
+                        queue.append((xk, xi))
+
+        return True
+
     def solve(
         self,
         use_mrv: bool = True,
         use_degree: bool = True,
         use_lcv: bool = True,
         use_forward_checking: bool = True,
+        use_ac3: bool = False,
         max_backtracks: Optional[int] = None,
     ) -> Tuple[Optional[Dict[Any, Any]], Dict[str, int]]:
         """
@@ -406,6 +464,7 @@ class CSP:
             use_degree: Use Degree heuristic (tie-breaker for MRV)
             use_lcv: Use Least Constraining Value heuristic
             use_forward_checking: Use forward checking to prune domains
+            use_ac3: Use AC-3 arc consistency (as preprocessing and during search)
             max_backtracks: Maximum number of backtracks allowed before bailing out.
                            If None, there is no limit.
 
@@ -419,16 +478,106 @@ class CSP:
         self.stats = {"assignments": 0, "backtracks": 0, "checks": 0}
         self.max_backtracks = max_backtracks
 
+        # Initialize domains
+        domains = {var: set(self.domain) for var in self.variables}
+
+        # Apply AC-3 as preprocessing if requested
+        if use_ac3:
+            if not self.ac3(domains):
+                return None, self.stats
+
         # Call the appropriate backtracking function
         if use_forward_checking:
-            domains = {var: set(self.domain) for var in self.variables}
             solution = self._backtracking_with_fc_stats(
-                {}, domains, use_mrv, use_degree, use_lcv
+                {}, domains, use_mrv, use_degree, use_lcv, use_ac3
             )
         else:
-            solution = self._backtracking_stats({}, use_mrv, use_degree, use_lcv)
+            # For non-forward checking, we still need to use domains if AC-3 was applied
+            if use_ac3:
+                # Convert domains to a format compatible with non-forward checking
+                # We'll need to modify _backtracking_stats to handle domains
+                solution = self._backtracking_stats_with_domains(
+                    {}, domains, use_mrv, use_degree, use_lcv
+                )
+            else:
+                solution = self._backtracking_stats({}, use_mrv, use_degree, use_lcv)
 
         return solution, self.stats
+
+    def _backtracking_stats_with_domains(
+        self,
+        assignment: Dict[Any, Any],
+        domains: Dict[Any, Set[Any]],
+        use_mrv: bool,
+        use_degree: bool,
+        use_lcv: bool,
+    ) -> Optional[Dict[Any, Any]]:
+        """
+        Recursive backtracking without forward checking but with domains for AC-3.
+        """
+        # Check if we've exceeded the maximum allowed backtracks
+        if (
+            self.max_backtracks is not None
+            and self.stats["backtracks"] >= self.max_backtracks
+        ):
+            return None
+
+        # If assignment is complete, return it
+        if len(assignment) == len(self.variables):
+            return assignment
+
+        # Select unassigned variable
+        var = self._select_unassigned_variable_fc(
+            assignment, domains, use_mrv, use_degree
+        )
+        if var is None:
+            return None
+
+        # Order domain values
+        values = self._order_domain_values_fc(var, assignment, domains, use_lcv)
+
+        # If there are no values, backtrack immediately
+        if not values:
+            self.stats["backtracks"] += 1
+            if (
+                self.max_backtracks is not None
+                and self.stats["backtracks"] >= self.max_backtracks
+            ):
+                return None
+            return None
+
+        for value in values:
+            # Increment checks counter
+            self.stats["checks"] += 1
+            if self.is_consistent(var, value, assignment):
+                assignment[var] = value
+                self.stats["assignments"] += 1
+
+                # Save current domains
+                old_domains = {v: set(domains[v]) for v in domains}
+
+                # Update domain for the assigned variable
+                domains[var] = {value}
+
+                result = self._backtracking_stats_with_domains(
+                    assignment, domains, use_mrv, use_degree, use_lcv
+                )
+                if result is not None:
+                    return result
+
+                # Backtrack
+                for v in domains:
+                    domains[v] = old_domains[v]
+                del assignment[var]
+                self.stats["backtracks"] += 1
+                # Check again after incrementing backtracks
+                if (
+                    self.max_backtracks is not None
+                    and self.stats["backtracks"] >= self.max_backtracks
+                ):
+                    return None
+
+        return None
 
     def _backtracking_stats(
         self, assignment: Dict[Any, Any], use_mrv: bool, use_degree: bool, use_lcv: bool
@@ -495,9 +644,11 @@ class CSP:
         use_mrv: bool,
         use_degree: bool,
         use_lcv: bool,
+        use_ac3: bool = False,
     ) -> Optional[Dict[Any, Any]]:
         """
         Recursive backtracking with forward checking and statistics.
+        Optionally use AC-3 for maintaining arc consistency.
         """
         # Check if we've exceeded the maximum allowed backtracks
         if (
@@ -539,11 +690,34 @@ class CSP:
                 # Save current domains for backtracking
                 old_domains = {v: set(domains[v]) for v in domains}
 
+                # Update domain for the assigned variable
+                domains[var] = {value}
+
                 # Perform forward checking
                 if self._forward_check(var, value, assignment, domains):
-                    result = self._backtracking_with_fc_stats(
-                        assignment, domains, use_mrv, use_degree, use_lcv
-                    )
+                    # Optionally apply AC-3
+                    if use_ac3:
+                        # Make a copy of domains for AC-3
+                        ac3_domains = {v: set(domains[v]) for v in domains}
+                        if self.ac3(ac3_domains):
+                            # If AC-3 succeeds, use the pruned domains
+                            for v in domains:
+                                domains[v] = ac3_domains[v]
+                            result = self._backtracking_with_fc_stats(
+                                assignment,
+                                domains,
+                                use_mrv,
+                                use_degree,
+                                use_lcv,
+                                use_ac3,
+                            )
+                        else:
+                            result = None
+                    else:
+                        result = self._backtracking_with_fc_stats(
+                            assignment, domains, use_mrv, use_degree, use_lcv, use_ac3
+                        )
+
                     if result is not None:
                         return result
 
