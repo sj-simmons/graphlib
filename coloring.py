@@ -1,6 +1,9 @@
 from csp import CSP
 from typing import Any, Dict, List, Set, Optional, Tuple
 from graph import UndirectedGraph_
+import sys
+
+sys.setrecursionlimit(4000)
 
 class GraphColoringCSP(CSP):
     """
@@ -101,12 +104,13 @@ if __name__ == "__main__":
 
     print("Heuristic Comparison on Planar Graphs")
 
-    graph = planar_(UndirectedGraph_(), n=200, remove_probability=0.0, seed=1)
-    #graph = planar_(UndirectedGraph_(), n=250, remove_probability=0.01, seed=1)
+    graph = planar_(UndirectedGraph_(), n=200, remove_probability=0, seed=1)
+    #graph = planar_(UndirectedGraph_(), n=300, remove_probability=0, seed=1)
+    #graph = planar_(UndirectedGraph_(), n=360, remove_probability=0.05, seed=1)
     print(f"Coloring a graph of size {len(graph)}")
 
     heuristic_configs = [
-        ("No heuristics", False, False, False, False),
+        ("No heuristics", False, False, False, True),  # Enable forward checking
         ("MRV only", True, False, False, True),
         ("MRV + Degree", True, True, False, True),
         ("MRV + LCV", True, False, True, True),
@@ -116,8 +120,10 @@ if __name__ == "__main__":
     last_solution = None
     for name, mrv, degree, lcv, fc in heuristic_configs:
         csp = GraphColoringCSP(graph, num_colors=3)
+        # For "No heuristics", limit backtracks to prevent hanging
+        max_backtracks = 1_000_000 if name == "No heuristics" else None
         solution, stats = csp.solve(use_mrv=mrv, use_degree=degree, use_lcv=lcv,
-                                   use_forward_checking=fc)
+                                   use_forward_checking=fc, max_backtracks=max_backtracks)
         if solution:
             # Double check that this a valid coloring
             assert csp.is_valid_coloring(solution)
@@ -125,9 +131,10 @@ if __name__ == "__main__":
             last_solution = solution
         else:
             found = "No"
-        print(f"   {name:20} | Solution: {found:3} | "
-              f"Assignments: {stats['assignments']:3} | "
-              f"Backtracks: {stats['backtracks']:2}")
+        print(f"   {name:20} | Solution: {found:4} | "
+              f"Assignments: {stats['assignments']:4} | "
+              f"Backtracks: {stats['backtracks']:3} | ",
+              f"Checks: {stats['checks']:3}")
 
     if last_solution:
         csp.visualize_solution(last_solution, "Planar Graph Coloring")
