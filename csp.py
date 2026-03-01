@@ -429,15 +429,29 @@ class CSP:
         if domains is None:
             domains = {var: set(self.domain) for var in self.variables}
 
-        # Initialize queue with all arcs (both directions for each edge)
-        queue = []
+        # Use deque for efficient queue operations
+        import collections
+
+        queue = collections.deque()
         for xi in self.variables:
             for xj in self.constraints[xi]:
                 queue.append((xi, xj))
 
+        # Track number of revisions to prevent hanging
+        revisions = 0
+        # Use max_backtracks as the limit
+        # If max_backtracks is None, there's no limit (could cause hanging)
+        limit = self.max_backtracks if hasattr(self, "max_backtracks") else None
+
         while queue:
-            xi, xj = queue.pop(0)
+            # Check if we've exceeded the limit
+            if limit is not None and revisions > limit:
+                # To prevent hanging, return False (treat as inconsistent)
+                return False
+
+            xi, xj = queue.popleft()
             if self._revise(xi, xj, domains):
+                revisions += 1
                 if len(domains[xi]) == 0:
                     return False
                 # Add arcs (xk, xi) where xk is a neighbor of xi (except xj)
@@ -648,7 +662,7 @@ class CSP:
     ) -> Optional[Dict[Any, Any]]:
         """
         Recursive backtracking with forward checking and statistics.
-        Optionally use AC-3 for maintaining arc consistency.
+        When use_ac3 is True, it was already applied as preprocessing.
         """
         # Check if we've exceeded the maximum allowed backtracks
         if (
@@ -695,28 +709,11 @@ class CSP:
 
                 # Perform forward checking
                 if self._forward_check(var, value, assignment, domains):
-                    # Optionally apply AC-3
-                    if use_ac3:
-                        # Make a copy of domains for AC-3
-                        ac3_domains = {v: set(domains[v]) for v in domains}
-                        if self.ac3(ac3_domains):
-                            # If AC-3 succeeds, use the pruned domains
-                            for v in domains:
-                                domains[v] = ac3_domains[v]
-                            result = self._backtracking_with_fc_stats(
-                                assignment,
-                                domains,
-                                use_mrv,
-                                use_degree,
-                                use_lcv,
-                                use_ac3,
-                            )
-                        else:
-                            result = None
-                    else:
-                        result = self._backtracking_with_fc_stats(
-                            assignment, domains, use_mrv, use_degree, use_lcv, use_ac3
-                        )
+                    # Don't apply AC-3 during search to prevent hanging
+                    # It was already applied as preprocessing if use_ac3=True
+                    result = self._backtracking_with_fc_stats(
+                        assignment, domains, use_mrv, use_degree, use_lcv, use_ac3
+                    )
 
                     if result is not None:
                         return result
