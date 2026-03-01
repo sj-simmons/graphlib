@@ -162,5 +162,6 @@ if __name__ == "__main__":
     #graph = planar_(UndirectedGraph_(), n=179, remove_probability=0, seed=1)
     graph = planar_(UndirectedGraph_(), n=200, remove_probability=0, seed=1)
     #graph = planar_(UndirectedGraph_(), n=360, remove_probability=0.05, seed=1)
+
     print(f"3-coloring a graph of size {len(graph)}")
     compare_heuristics(graph, num_colors=3)
