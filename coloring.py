@@ -102,15 +102,16 @@ class GraphColoringCSP(CSP):
             print("Solution:", solution)
 
 
-def compare_heuristics(graph, num_colors, max_backtracks=1_000_000, display=True, title=""):
+def compare_heuristics(graph, num_colors, max_backtracks=10_000, display=True, title=""):
 
+    print("Maximum backtracks allowed:", max_backtracks)
     heuristic_configs = [
         ("No heuristics", False, False, False, True, False),  # Enable forward checking
+        ("AC-3 only", False, False, False, True, True),
         ("MRV only", True, False, False, True, False),
         ("MRV + Degree", True, True, False, True, False),
         ("MRV + LCV", True, False, True, True, False),
         ("MRV + degree + LCV", True, True, True, True, False),
-        ("AC-3 only", False, False, False, True, True),
         ("All heuristics", True, True, True, True, True),
     ]
 
@@ -149,15 +150,17 @@ if __name__ == "__main__":
 
     from graph import complete_, planar_
 
+    print("Quick check on K_5:")
     title = "K_5: complete graph with 5 vertices."
     print("4-coloring:")
     compare_heuristics(complete_(UndirectedGraph_(), n=5), num_colors=4, title=title)
     print("5-coloring:")
-    compare_heuristics(complete_(UndirectedGraph_(), n=5), num_colors=5, title=title)
+    compare_heuristics(complete_(UndirectedGraph_(), n=5), num_colors=5, display=False, title=title)
 
     print("\nHeuristic comparison on 3-colorable planar graphs:")
-    #graph = planar_(UndirectedGraph_(), n=200, remove_probability=0, seed=1)
-    #graph = planar_(UndirectedGraph_(), n=300, remove_probability=0, seed=1)
-    graph = planar_(UndirectedGraph_(), n=360, remove_probability=0.05, seed=1)
+    #graph = planar_(UndirectedGraph_(), n=1000, remove_probability=0.13, seed=117)
+    #graph = planar_(UndirectedGraph_(), n=179, remove_probability=0, seed=1)
+    graph = planar_(UndirectedGraph_(), n=200, remove_probability=0, seed=1)
+    #graph = planar_(UndirectedGraph_(), n=360, remove_probability=0.05, seed=1)
     print(f"3-coloring a graph of size {len(graph)}")
     compare_heuristics(graph, num_colors=3)
