@@ -102,7 +102,7 @@ class GraphColoringCSP(CSP):
             print("Solution:", solution)
 
 
-def compare_heuristics(graph, num_colors, max_backtracks=1_000_000, display=True):
+def compare_heuristics(graph, num_colors, max_backtracks=1_000_000, display=True, title=""):
 
     heuristic_configs = [
         ("No heuristics", False, False, False, True, False),  # Enable forward checking
@@ -140,7 +140,7 @@ def compare_heuristics(graph, num_colors, max_backtracks=1_000_000, display=True
         )
 
     if last_solution and display:
-        csp.visualize_solution(last_solution, "Planar Graph Coloring")
+        csp.visualize_solution(last_solution, f"{title}")
 
 
 if __name__ == "__main__":
@@ -149,15 +149,15 @@ if __name__ == "__main__":
 
     from graph import complete_, planar_
 
-    print("\nQuick check on K5, which is 5- but not 4-colorable:")
+    title = "K_5: complete graph with 5 vertices."
     print("4-coloring:")
-    compare_heuristics(complete_(UndirectedGraph_(), n=5), num_colors=4)
+    compare_heuristics(complete_(UndirectedGraph_(), n=5), num_colors=4, title=title)
     print("5-coloring:")
-    compare_heuristics(complete_(UndirectedGraph_(), n=5), num_colors=5)
+    compare_heuristics(complete_(UndirectedGraph_(), n=5), num_colors=5, title=title)
 
     print("\nHeuristic comparison on 3-colorable planar graphs:")
-    # graph = planar_(UndirectedGraph_(), n=200, remove_probability=0, seed=1)
-    graph = planar_(UndirectedGraph_(), n=300, remove_probability=0, seed=1)
+    #graph = planar_(UndirectedGraph_(), n=200, remove_probability=0, seed=1)
+    #graph = planar_(UndirectedGraph_(), n=300, remove_probability=0, seed=1)
     graph = planar_(UndirectedGraph_(), n=360, remove_probability=0.05, seed=1)
     print(f"3-coloring a graph of size {len(graph)}")
     compare_heuristics(graph, num_colors=3)
