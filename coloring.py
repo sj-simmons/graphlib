@@ -102,7 +102,7 @@ class GraphColoringCSP(CSP):
             print("Solution:", solution)
 
 
-def compare_heuristics(graph, num_colors, max_backtracks=10_000, display=True, title=""):
+def compare_heuristics(graph, num_colors, max_backtracks=30_000, display=True, title=""):
 
     print("Maximum backtracks allowed:", max_backtracks)
     heuristic_configs = [
@@ -148,7 +148,7 @@ if __name__ == "__main__":
 
     # Demonstrate the CSP solver on graph coloring problems.
 
-    from graph import complete_, planar_
+    from graph import complete_, planar_, rb_graph_
 
     print("Quick check on K_5:")
     title = "K_5: complete graph with 5 vertices."
@@ -160,8 +160,9 @@ if __name__ == "__main__":
     print("\nHeuristic comparison on 3-colorable planar graphs:")
     #graph = planar_(UndirectedGraph_(), n=1000, remove_probability=0.13, seed=117)
     #graph = planar_(UndirectedGraph_(), n=179, remove_probability=0, seed=1)
-    graph = planar_(UndirectedGraph_(), n=200, remove_probability=0, seed=1)
-    #graph = planar_(UndirectedGraph_(), n=360, remove_probability=0.05, seed=1)
+    #graph = planar_(UndirectedGraph_(), n=200, remove_probability=0, seed=1)
+    graph = planar_(UndirectedGraph_(), n=360, remove_probability=0.05, seed=1)
+    #graph = rb_graph_(UndirectedGraph_(), n=30, seed=1)
 
     print(f"3-coloring a graph of size {len(graph)}")
     compare_heuristics(graph, num_colors=3)
