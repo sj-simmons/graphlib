@@ -587,6 +587,80 @@ def planar_(
     return graph
 
 
+def rb_graph_(
+    graph: T,
+    n: int = 20,
+    d: int = 3,
+    p1: float = 0.5,
+    p2: float = 0.5,
+    seed: Optional[int] = None,
+) -> T:
+    """
+    Generate a random graph using the RB (random with balanced structure) model.
+
+    This creates a graph where edges represent constraints between variables.
+    The graph is generated as the constraint graph of an RB model CSP instance.
+
+    Args:
+        graph: An empty instance of a subclass of UndirectedGraph_ to populate
+        n: Number of vertices (variables) in the graph
+        d: Domain size for each variable (not directly used for graph structure,
+           but affects RB model parameters)
+        p1: Constraint density (0 ≤ p1 ≤ 1). Determines edge density.
+           Higher p1 = more edges.
+        p2: Constraint tightness (0 ≤ p2 ≤ 1). Not directly used for graph structure,
+           but part of RB model.
+        seed: Random seed for reproducibility
+
+    Returns:
+        T: The populated random graph based on RB model
+
+    Raises:
+        ValueError: If parameters are invalid
+        AssertionError: If graph is not empty
+    """
+    assert len(graph) == 0, "You probably wanted to start with an empty graph!"
+
+    if n <= 0:
+        raise ValueError("n must be positive")
+    if d <= 0:
+        raise ValueError("d must be positive")
+    if p1 < 0 or p1 > 1:
+        raise ValueError("p1 must be between 0 and 1")
+    if p2 < 0 or p2 > 1:
+        raise ValueError("p2 must be between 0 and 1")
+
+    # Set random seed if provided
+    if seed is not None:
+        import random
+
+        random.seed(seed)
+
+    # Calculate total number of possible edges between distinct vertices
+    total_possible_edges = n * (n - 1) // 2
+    num_edges = int(p1 * total_possible_edges)
+
+    # Add vertices
+    for i in range(n):
+        graph.add_vertex(i)
+
+    if num_edges > 0:
+        # Generate all possible vertex pairs
+        all_pairs = [(i, j) for i in range(n) for j in range(i + 1, n)]
+
+        # Randomly select pairs to have edges
+        import random
+
+        edge_pairs = random.sample(all_pairs, num_edges)
+
+        # Add edges with random weights between 1 and 10
+        for v1, v2 in edge_pairs:
+            weight = round(random.uniform(1, 10), 2)
+            graph.add_edge(v1, v2, weight)
+
+    return graph
+
+
 def barabasi_albert_(
     graph: T,
     n: int = 100,
@@ -921,6 +995,18 @@ if __name__ == "__main__":
     print(f"Number of vertices: {len(graph_planar_small)}")
     print(f"Number of edges: {len(graph_planar_small.get_edges())}")
 
+    # Test RB model graphs
+    n_rb = 30
+    p1_rb = 0.3
+    d_rb = 3
+
+    graph_rb = rb_graph_(UndirectedGraph_(), n=n_rb, d=d_rb, p1=p1_rb, seed=42)
+    print(f"\nRB model graph (n={n_rb}, p1={p1_rb}):")
+    print(f"Number of vertices: {len(graph_rb)}")
+    print(f"Number of edges: {len(graph_rb.get_edges())}")
+    expected_edges = int(p1_rb * n_rb * (n_rb - 1) / 2)
+    print(f"Expected edges: {expected_edges}")
+
     if HAS_NX_MPL:
         # Figure 1: Complete graph and 20-node graph
         fig1, axes1 = plt.subplots(1, 2, figsize=(16, 8))
@@ -959,7 +1045,7 @@ if __name__ == "__main__":
         plt.show()
 
         # Figure 3: Large graphs without labels using largenx2ax
-        print("\nGenerating large graphs for Figure 3...\n")
+        print("\nGenerating large graph for Figure 3...\n")
 
         # Create large Watts-Strogatz graph
         n_ws_large, k_large = 300, 8
@@ -998,7 +1084,7 @@ if __name__ == "__main__":
         plt.show()
 
         # Figure 4: Planar graphs of different sizes
-        print("\nGenerating planar graphs for Figure 4...\n")
+        print("\nGenerating planar graph for Figure 4...\n")
 
         # Create large planar graph with edge removal
         n_planar_large = 100
@@ -1011,7 +1097,6 @@ if __name__ == "__main__":
         print(f"Number of vertices: {len(graph_planar_large)}")
         print(f"Number of edges: {len(graph_planar_large.get_edges())}")
 
-        # Create Figure 4
         fig4, axes4 = plt.subplots(1, 2, figsize=(16, 8))
 
         # Small planar graph (with labels and weights)
@@ -1025,7 +1110,7 @@ if __name__ == "__main__":
         ax7.set_title(f"Small Planar Graph (n={n_planar_small}, maximal)")
         ax7.axis("off")
 
-        # Large planar graph (without labels, using largenx2ax)
+        # Figure 5: Large planar graph (without labels)
         ax8 = axes4[1]
         g = graph2nx(graph_planar_large)
         try:
@@ -1037,6 +1122,41 @@ if __name__ == "__main__":
             f"Large Planar Graph (using n={n_planar_large}, 30% edges removed)"
         )
         ax8.axis("off")
+
+        plt.tight_layout()
+        plt.show()
+
+        # Create Figure 5: Visualize RB model graphs
+        print("\nGenerating RB model graph for Figure 5...\n")
+        fig5, axes5 = plt.subplots(1, 2, figsize=(10, 8))
+        ax9 = axes5[0]
+        g_nx = graph2nx(graph_rb)
+        try:
+            largenx2ax(g_nx, ax9, seed=42, pos=nx.planar_layout(g_nx))
+        except:
+            print("not planar")
+            largenx2ax(g_nx, ax9, seed=42)
+        ax9.set_title(f"RB Model Graph (n={n_rb}, p1={p1_rb})")
+        ax9.axis("off")
+
+        ax10 = axes5[1]
+        n_rb = 60
+        p1_rb = 0.5
+        d_rb = 3
+        graph_rb_2 = rb_graph_(UndirectedGraph_(), n=n_rb, d=d_rb, p1=p1_rb, seed=42)
+        print(f"RB model graph (n={n_rb}, p1={p1_rb}):")
+        print(f"Number of vertices: {len(graph_rb_2)}")
+        print(f"Number of edges: {len(graph_rb_2.get_edges())}")
+        expected_edges = int(p1_rb * n_rb * (n_rb - 1) / 2)
+        print(f"Expected edges: {expected_edges}")
+        g_nx = graph2nx(graph_rb_2)
+        try:
+            largenx2ax(g_nx, ax10, seed=42, pos=nx.planar_layout(g_nx))
+        except:
+            print("not planar")
+            largenx2ax(g_nx, ax10, seed=42)
+        ax10.set_title(f"RB Model Graph (n={n_rb}, p1={p1_rb})")
+        ax10.axis("off")
 
         plt.tight_layout()
         plt.show()
