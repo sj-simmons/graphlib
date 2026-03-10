@@ -1,733 +1,203 @@
-from typing import Any, Dict, List, Set, Optional, Tuple
-import graph
+from abc import ABC, abstractmethod
+from typing import Generic, TypeVar, Dict, List, Optional, Set, Any
+import copy
+
+# Type variables for generic implementation
+V = TypeVar("V")  # Variable type
+D = TypeVar("D")  # Domain value type
 
 
-class CSP:
-    """
-    Constraint Satisfaction Problem solver for graph coloring problems.
-    This can be extended to other CSPs, but is designed for graph coloring.
-    """
+class Constraint(Generic[V, D], ABC):
+    """Abstract base class for constraints."""
 
-    def __init__(self, graph: graph.UndirectedGraph_, domain: List[Any] = None):
-        """
-        Initialize a CSP for the given graph.
+    def __init__(self, variables: List[V]):
+        self.variables = variables
 
-        Args:
-            graph: An undirected graph (from graph.py)
-            domain: List of possible values for each variable (e.g., colors)
-                   Default is [0, 1, 2] for 3-coloring
-        """
-        self.graph = graph
-        # Get vertices and sort by degree (highest first) to improve search efficiency
-        # even when no heuristics are used. This helps color constrained variables first,
-        # reducing the branching factor early in the search.
-        vertices = list(graph.get_vertices())
-        # Compute degrees
-        degrees = {v: len(graph.get_neighbors(v)) for v in vertices}
-        # Sort vertices by degree in descending order
-        self.variables = sorted(vertices, key=lambda v: degrees[v], reverse=True)
+    @abstractmethod
+    def is_satisfied(self, assignment: Dict[V, D]) -> bool:
+        """Check if the constraint is satisfied given the current assignment."""
+        pass
 
-        if domain is None:
-            self.domain = [0, 1, 2]  # Default: 3-coloring
-        else:
-            self.domain = domain
+    @abstractmethod
+    def get_conflicted_variables(self, assignment: Dict[V, D]) -> Set[V]:
+        """Return variables that are involved in conflicts."""
+        pass
 
-        self.constraints = self._build_constraints()
 
-    def _build_constraints(self) -> Dict[Any, Set[Any]]:
-        """
-        Build constraints from graph edges.
-        For graph coloring: adjacent vertices must have different colors.
+class CSP(Generic[V, D]):
+    """Base class for Constraint Satisfaction Problems."""
 
-        Returns:
-            Dictionary mapping each variable to its constrained neighbors
-        """
-        constraints = {}
-        for vertex in self.variables:
-            constraints[vertex] = set(self.graph.get_neighbors(vertex))
-        return constraints
+    def __init__(self):
+        self.variables: List[V] = []
+        self.domains: Dict[V, List[D]] = {}
+        self.constraints: Dict[V, List[Constraint[V, D]]] = {}
+        self._current_assignment: Dict[V, D] = {}
 
-    def is_consistent(
-        self, variable: Any, value: Any, assignment: Dict[Any, Any]
-    ) -> bool:
-        """
-        Check if assigning value to variable is consistent with current assignment.
+    def add_variable(self, variable: V, domain: List[D]) -> None:
+        """Add a variable with its domain."""
+        self.variables.append(variable)
+        self.domains[variable] = domain.copy()
+        self.constraints[variable] = []
 
-        Args:
-            variable: The variable being assigned
-            value: The value being assigned
-            assignment: Current partial assignment
+    def add_constraint(self, constraint: Constraint[V, D]) -> None:
+        """Add a constraint and connect it to relevant variables."""
+        for var in constraint.variables:
+            if var not in self.constraints:
+                self.constraints[var] = []
+            self.constraints[var].append(constraint)
 
-        Returns:
-            True if assignment is consistent, False otherwise
-        """
-        for neighbor in self.constraints[variable]:
-            if neighbor in assignment and assignment[neighbor] == value:
+    def get_constraints_for_variable(self, variable: V) -> List[Constraint[V, D]]:
+        """Get all constraints involving a specific variable."""
+        return self.constraints.get(variable, [])
+
+    def is_consistent(self, variable: V, value: D, assignment: Dict[V, D]) -> bool:
+        """Check if assigning value to variable is consistent with all constraints."""
+        # Create a temporary assignment to test
+        temp_assignment = assignment.copy()
+        temp_assignment[variable] = value
+
+        # Check all constraints involving this variable
+        for constraint in self.get_constraints_for_variable(variable):
+            if not constraint.is_satisfied(temp_assignment):
                 return False
         return True
 
-    def backtracking_search(
-        self,
-        use_mrv: bool = False,
-        use_degree: bool = False,
-        use_lcv: bool = False,
-        use_forward_checking: bool = False,
-    ) -> Optional[Dict[Any, Any]]:
-        """
-        Perform backtracking search to find a solution.
+    def is_complete(self, assignment: Dict[V, D]) -> bool:
+        """Check if assignment covers all variables."""
+        return len(assignment) == len(self.variables)
 
-        Args:
-            use_mrv: Use Minimum Remaining Values heuristic
-            use_degree: Use Degree heuristic (tie-breaker for MRV)
-            use_lcv: Use Least Constraining Value heuristic
-            use_forward_checking: Use forward checking to prune domains
-
-        Returns:
-            Complete assignment if solution found, None otherwise
-        """
-        if use_forward_checking:
-            # Initialize domains for forward checking
-            domains = {var: set(self.domain) for var in self.variables}
-            return self._backtracking_with_fc({}, domains, use_mrv, use_degree, use_lcv)
-        else:
-            return self._backtracking({}, use_mrv, use_degree, use_lcv)
-
-    def _backtracking(
-        self, assignment: Dict[Any, Any], use_mrv: bool, use_degree: bool, use_lcv: bool
-    ) -> Optional[Dict[Any, Any]]:
-        """
-        Recursive backtracking without forward checking.
-        """
-        # If assignment is complete, return it
-        if len(assignment) == len(self.variables):
-            return assignment
-
-        # Select unassigned variable
-        var = self._select_unassigned_variable(assignment, use_mrv, use_degree)
-        if var is None:
-            return None
-
-        # Order domain values
-        values = self._order_domain_values(var, assignment, use_lcv)
-
-        for value in values:
-            if self.is_consistent(var, value, assignment):
-                assignment[var] = value
-                result = self._backtracking(assignment, use_mrv, use_degree, use_lcv)
-                if result is not None:
-                    return result
-                del assignment[var]
-
-        return None
-
-    def _backtracking_with_fc(
-        self,
-        assignment: Dict[Any, Any],
-        domains: Dict[Any, Set[Any]],
-        use_mrv: bool,
-        use_degree: bool,
-        use_lcv: bool,
-    ) -> Optional[Dict[Any, Any]]:
-        """
-        Recursive backtracking with forward checking.
-        """
-        # If assignment is complete, return it
-        if len(assignment) == len(self.variables):
-            return assignment
-
-        # Select unassigned variable
-        var = self._select_unassigned_variable_fc(
-            assignment, domains, use_mrv, use_degree
-        )
-        if var is None:
-            return None
-
-        # Order domain values
-        values = self._order_domain_values_fc(var, assignment, domains, use_lcv)
-
-        for value in values:
-            if self.is_consistent(var, value, assignment):
-                assignment[var] = value
-
-                # Save current domains for backtracking
-                old_domains = {v: set(domains[v]) for v in domains}
-
-                # Perform forward checking
-                if self._forward_check(var, value, assignment, domains):
-                    result = self._backtracking_with_fc(
-                        assignment, domains, use_mrv, use_degree, use_lcv
-                    )
-                    if result is not None:
-                        return result
-
-                # Restore domains and remove assignment
-                for v in domains:
-                    domains[v] = old_domains[v]
-                del assignment[var]
-
-        return None
-
-    def _select_unassigned_variable(
-        self, assignment: Dict[Any, Any], use_mrv: bool, use_degree: bool
-    ) -> Any:
-        """
-        Select an unassigned variable using heuristics.
-        """
+    def select_unassigned_variable(self, assignment: Dict[V, D]) -> Optional[V]:
+        """Select the next variable to assign (MRV heuristic by default)."""
         unassigned = [v for v in self.variables if v not in assignment]
         if not unassigned:
             return None
 
-        if not use_mrv:
-            return unassigned[0]
+        # Default: Minimum Remaining Values (MRV) heuristic
+        return min(unassigned, key=lambda var: len(self.domains[var]))
 
-        # MRV: Choose variable with fewest legal values
-        # Count legal values for each unassigned variable
-        mrv_candidates = []
-        min_legal = float("inf")
+    def order_domain_values(self, variable: V, assignment: Dict[V, D]) -> List[D]:
+        """Order domain values for a variable (LCV heuristic by default)."""
 
-        for var in unassigned:
-            legal_count = 0
-            for value in self.domain:
-                # Track checks only in stats version
-                if hasattr(self, "stats") and "checks" in self.stats:
-                    self.stats["checks"] += 1
-                if self.is_consistent(var, value, assignment):
-                    legal_count += 1
-            if legal_count == 0:
-                # If no legal values, the current assignment is inconsistent
-                # Return this variable to trigger immediate backtracking
-                return var
-            if legal_count < min_legal:
-                min_legal = legal_count
-                mrv_candidates = [var]
-            elif legal_count == min_legal:
-                mrv_candidates.append(var)
+        # Default: Least Constraining Value heuristic
+        def count_conflicts(value: D) -> int:
+            conflicts = 0
+            temp_assignment = assignment.copy()
+            temp_assignment[variable] = value
 
-        # Sort candidates for deterministic behavior
-        if len(mrv_candidates) > 1:
-            # Always use degree as a tie-breaker, even when use_degree is False
-            # This is generally a good heuristic and prevents getting stuck
-            # Sort by degree (highest first), then by variable name for determinism
-            mrv_candidates.sort(
-                key=lambda v: (
-                    -len([n for n in self.constraints[v] if n not in assignment]),
-                    str(v),
-                )
-            )
+            for constraint in self.get_constraints_for_variable(variable):
+                conflicts += len(constraint.get_conflicted_variables(temp_assignment))
+            return conflicts
 
-        return mrv_candidates[0] if mrv_candidates else unassigned[0]
+        return sorted(self.domains[variable], key=count_conflicts)
 
-    def _select_unassigned_variable_fc(
-        self,
-        assignment: Dict[Any, Any],
-        domains: Dict[Any, Set[Any]],
-        use_mrv: bool,
-        use_degree: bool,
-    ) -> Any:
+    def forward_check(self, variable: V, value: D, assignment: Dict[V, D]) -> bool:
         """
-        Select unassigned variable for forward checking version.
-        """
-        unassigned = [v for v in self.variables if v not in assignment]
-        if not unassigned:
-            return None
-
-        if not use_mrv:
-            return unassigned[0]
-
-        # MRV: Choose variable with fewest legal values
-        # Count legal values from domain that are consistent with assignment
-        mrv_vars = []
-        min_legal = float("inf")
-
-        for var in unassigned:
-            # Count legal values
-            legal_count = 0
-            for value in domains[var]:
-                if self.is_consistent(var, value, assignment):
-                    legal_count += 1
-            if legal_count == 0:
-                # No legal values, current assignment is inconsistent
-                # Return this variable to trigger immediate backtracking
-                return var
-            if legal_count < min_legal:
-                min_legal = legal_count
-                mrv_vars = [var]
-            elif legal_count == min_legal:
-                mrv_vars.append(var)
-
-        # Sort for deterministic behavior
-        if len(mrv_vars) > 1:
-            # Always use degree as a tie-breaker, even when use_degree is False
-            # This is generally a good heuristic and prevents getting stuck
-            # Sort by degree (highest first), then by variable name for determinism
-            mrv_vars.sort(
-                key=lambda v: (
-                    -len([n for n in self.constraints[v] if n not in assignment]),
-                    str(v),
-                )
-            )
-
-        return mrv_vars[0] if mrv_vars else unassigned[0]
-
-    def _order_domain_values(
-        self, var: Any, assignment: Dict[Any, Any], use_lcv: bool
-    ) -> List[Any]:
-        """
-        Order domain values for a variable.
-        """
-        # First get all consistent values
-        consistent_values = [
-            value for value in self.domain if self.is_consistent(var, value, assignment)
-        ]
-
-        if not use_lcv:
-            # Even without LCV, use a simple heuristic: try colors that are least used
-            # in the current assignment among neighbors
-            color_counts = {color: 0 for color in self.domain}
-            for neighbor in self.constraints[var]:
-                if neighbor in assignment:
-                    color = assignment[neighbor]
-                    if color in color_counts:
-                        color_counts[color] += 1
-            # Sort by count (least used first) to balance colors
-            consistent_values.sort(key=lambda color: color_counts[color])
-            return consistent_values
-
-        if not consistent_values:
-            return consistent_values
-
-        # For LCV, we want to count how many options remain for neighbors after assigning this value
-        # A better approach for graph coloring: count how many neighbors would still have this value available
-        # But actually, we want to choose the value that eliminates the fewest options from neighbors
-        # So we need to count for each neighbor how many of their consistent values would remain
-        # This is expensive, so let's use a simpler heuristic:
-        # Count how many unassigned neighbors currently have this value as a consistent option
-        # We can precompute for each color how many neighbors can take it
-        color_counts = {color: 0 for color in self.domain}
-
-        # Count for each neighbor how many colors they can take
-        for neighbor in self.constraints[var]:
-            if neighbor not in assignment:
-                for color in self.domain:
-                    if self.is_consistent(neighbor, color, assignment):
-                        color_counts[color] += 1
-
-        # Now for each consistent value, the score is the number of neighbors that can take that color
-        # Higher score means more neighbors can take this color, so it's less constraining
-        value_scores = []
-        for value in consistent_values:
-            # The score is the number of neighbors that can still use this color
-            # Actually, we want least constraining, which means higher score
-            score = color_counts[value]
-            value_scores.append((value, score))
-
-        # Sort by highest score (least constraining first)
-        value_scores.sort(key=lambda x: x[1], reverse=True)
-        return [v for v, _ in value_scores]
-
-    def _order_domain_values_fc(
-        self,
-        var: Any,
-        assignment: Dict[Any, Any],
-        domains: Dict[Any, Set[Any]],
-        use_lcv: bool,
-    ) -> List[Any]:
-        """
-        Order domain values for forward checking version.
-        """
-        # Get consistent values from current domain
-        consistent_values = [
-            value
-            for value in domains[var]
-            if self.is_consistent(var, value, assignment)
-        ]
-
-        if not use_lcv:
-            # Even without LCV, use a simple heuristic: try colors that are least used
-            # in the current assignment among neighbors
-            color_counts = {color: 0 for color in self.domain}
-            for neighbor in self.constraints[var]:
-                if neighbor in assignment:
-                    color = assignment[neighbor]
-                    if color in color_counts:
-                        color_counts[color] += 1
-            # Sort by count (least used first) to balance colors
-            consistent_values.sort(key=lambda color: color_counts[color])
-            return consistent_values
-
-        # For LCV, count how many neighbors have this value in their domain
-        # More neighbors having the value means it's less constraining (they can still use it)
-        value_scores = []
-        for value in consistent_values:
-            count = 0
-            for neighbor in self.constraints[var]:
-                if neighbor not in assignment:
-                    if value in domains[neighbor]:
-                        count += 1
-            # Higher count means less constraining
-            value_scores.append((value, count))
-
-        # Sort by highest count (least constraining first)
-        value_scores.sort(key=lambda x: x[1], reverse=True)
-        return [v for v, _ in value_scores]
-
-    def _forward_check(
-        self,
-        var: Any,
-        value: Any,
-        assignment: Dict[Any, Any],
-        domains: Dict[Any, Set[Any]],
-    ) -> bool:
-        """
-        Perform forward checking after assigning value to var.
+        Forward checking: remove inconsistent values from future variables' domains.
         Returns False if any domain becomes empty.
         """
-        for neighbor in self.constraints[var]:
-            if neighbor not in assignment:
-                if value in domains[neighbor]:
-                    domains[neighbor].remove(value)
-                    if len(domains[neighbor]) == 0:
-                        return False
-        return True
+        # This is a basic forward checking - override for more sophisticated versions
+        for future_var in self.variables:
+            if future_var in assignment:
+                continue
 
-    def _revise(self, xi: Any, xj: Any, domains: Dict[Any, Set[Any]]) -> bool:
-        """
-        Revise the domain of xi with respect to xj.
-        Returns True if the domain of xi was revised (reduced).
-        """
-        revised = False
-        to_remove = []
+            # Check if any value in future_var's domain is consistent
+            consistent_values = []
+            for val in self.domains[future_var]:
+                temp_assignment = assignment.copy()
+                temp_assignment[future_var] = val
 
-        for x in domains[xi]:
-            # Check if there exists a value y in domain of xj such that (x, y) satisfies the constraint
-            # For graph coloring, the constraint is x != y
-            found = False
-            for y in domains[xj]:
-                if x != y:
-                    found = True
-                    break
-            if not found:
-                to_remove.append(x)
-                revised = True
+                is_consistent = True
+                for constraint in self.get_constraints_for_variable(future_var):
+                    if not constraint.is_satisfied(temp_assignment):
+                        is_consistent = False
+                        break
 
-        for x in to_remove:
-            domains[xi].remove(x)
+                if is_consistent:
+                    consistent_values.append(val)
 
-        return revised
-
-    def ac3(self, domains: Optional[Dict[Any, Set[Any]]] = None) -> bool:
-        """
-        Enforce arc consistency using AC-3 algorithm.
-        Returns False if any domain becomes empty (inconsistent).
-
-        Args:
-            domains: Current domains. If None, initialize with full domains.
-
-        Returns:
-            True if arc consistency was enforced without empty domains, False otherwise.
-        """
-        if domains is None:
-            domains = {var: set(self.domain) for var in self.variables}
-
-        # Use deque for efficient queue operations
-        import collections
-
-        queue = collections.deque()
-        for xi in self.variables:
-            for xj in self.constraints[xi]:
-                queue.append((xi, xj))
-
-        # Track number of revisions to prevent hanging
-        revisions = 0
-        # Use max_backtracks as the limit
-        # If max_backtracks is None, there's no limit (could cause hanging)
-        limit = self.max_backtracks if hasattr(self, "max_backtracks") else None
-
-        while queue:
-            # Check if we've exceeded the limit
-            if limit is not None and revisions > limit:
-                # To prevent hanging, return False (treat as inconsistent)
+            if not consistent_values:
                 return False
 
-            xi, xj = queue.popleft()
-            if self._revise(xi, xj, domains):
-                revisions += 1
-                if len(domains[xi]) == 0:
-                    return False
-                # Add arcs (xk, xi) where xk is a neighbor of xi (except xj)
-                for xk in self.constraints[xi]:
-                    if xk != xj:
-                        queue.append((xk, xi))
+            # In a real implementation, you'd need to restore domains during backtracking
+            # This simplified version doesn't handle restoration
+            self.domains[future_var] = consistent_values
 
         return True
 
-    def solve(
-        self,
-        use_mrv: bool = True,
-        use_degree: bool = True,
-        use_lcv: bool = True,
-        use_forward_checking: bool = True,
-        use_ac3: bool = False,
-        max_backtracks: Optional[int] = None,
-    ) -> Tuple[Optional[Dict[Any, Any]], Dict[str, int]]:
+    def solve(self, use_forward_checking: bool = False) -> Optional[Dict[V, D]]:
         """
-        Solve the CSP and return solution with statistics.
-
-        Args:
-            use_mrv: Use Minimum Remaining Values heuristic
-            use_degree: Use Degree heuristic (tie-breaker for MRV)
-            use_lcv: Use Least Constraining Value heuristic
-            use_forward_checking: Use forward checking to prune domains
-            use_ac3: Use AC-3 arc consistency (as preprocessing and during search)
-            max_backtracks: Maximum number of backtracks allowed before bailing out.
-                           If None, there is no limit.
-
-        Returns:
-            Tuple of (solution, stats) where stats contains:
-            - 'assignments': number of variable assignments attempted
-            - 'backtracks': number of backtracks
-            - 'checks': number of consistency checks
+        Main solving method using backtracking search.
+        Returns a solution assignment or None if no solution exists.
         """
-        # Statistics tracking
-        self.stats = {"assignments": 0, "backtracks": 0, "checks": 0}
-        self.max_backtracks = max_backtracks
+        return self._backtrack({}, use_forward_checking)
 
-        # Initialize domains
-        domains = {var: set(self.domain) for var in self.variables}
+    def _backtrack(
+        self, assignment: Dict[V, D], use_forward_checking: bool
+    ) -> Optional[Dict[V, D]]:
+        """Backtracking search algorithm."""
+        if self.is_complete(assignment):
+            return assignment
 
-        # Apply AC-3 as preprocessing if requested
-        if use_ac3:
-            if not self.ac3(domains):
-                return None, self.stats
+        var = self.select_unassigned_variable(assignment)
+        if var is None:
+            return None
 
-        # Call the appropriate backtracking function
+        # Save current domain state for restoration
+        saved_domains = None
         if use_forward_checking:
-            solution = self._backtracking_with_fc_stats(
-                {}, domains, use_mrv, use_degree, use_lcv, use_ac3
-            )
-        else:
-            # For non-forward checking, we still need to use domains if AC-3 was applied
-            if use_ac3:
-                # Convert domains to a format compatible with non-forward checking
-                # We'll need to modify _backtracking_stats to handle domains
-                solution = self._backtracking_stats_with_domains(
-                    {}, domains, use_mrv, use_degree, use_lcv
-                )
-            else:
-                solution = self._backtracking_stats({}, use_mrv, use_degree, use_lcv)
+            saved_domains = copy.deepcopy(self.domains)
 
-        return solution, self.stats
-
-    def _backtracking_stats_with_domains(
-        self,
-        assignment: Dict[Any, Any],
-        domains: Dict[Any, Set[Any]],
-        use_mrv: bool,
-        use_degree: bool,
-        use_lcv: bool,
-    ) -> Optional[Dict[Any, Any]]:
-        """
-        Recursive backtracking without forward checking but with domains for AC-3.
-        """
-        # Check if we've exceeded the maximum allowed backtracks
-        if (
-            self.max_backtracks is not None
-            and self.stats["backtracks"] >= self.max_backtracks
-        ):
-            return None
-
-        # If assignment is complete, return it
-        if len(assignment) == len(self.variables):
-            return assignment
-
-        # Select unassigned variable
-        var = self._select_unassigned_variable_fc(
-            assignment, domains, use_mrv, use_degree
-        )
-        if var is None:
-            return None
-
-        # Order domain values
-        values = self._order_domain_values_fc(var, assignment, domains, use_lcv)
-
-        # If there are no values, backtrack immediately
-        if not values:
-            self.stats["backtracks"] += 1
-            if (
-                self.max_backtracks is not None
-                and self.stats["backtracks"] >= self.max_backtracks
-            ):
-                return None
-            return None
-
-        for value in values:
-            # Increment checks counter
-            self.stats["checks"] += 1
+        for value in self.order_domain_values(var, assignment):
             if self.is_consistent(var, value, assignment):
+                # Make assignment
                 assignment[var] = value
-                self.stats["assignments"] += 1
 
-                # Save current domains
-                old_domains = {v: set(domains[v]) for v in domains}
+                # Apply forward checking if requested
+                if use_forward_checking:
+                    if not self.forward_check(var, value, assignment):
+                        # Restore domains and try next value
+                        self.domains = saved_domains
+                        del assignment[var]
+                        continue
 
-                # Update domain for the assigned variable
-                domains[var] = {value}
-
-                result = self._backtracking_stats_with_domains(
-                    assignment, domains, use_mrv, use_degree, use_lcv
-                )
+                # Recursive call
+                result = self._backtrack(assignment, use_forward_checking)
                 if result is not None:
                     return result
 
-                # Backtrack
-                for v in domains:
-                    domains[v] = old_domains[v]
+                # Undo assignment and restore domains
                 del assignment[var]
-                self.stats["backtracks"] += 1
-                # Check again after incrementing backtracks
-                if (
-                    self.max_backtracks is not None
-                    and self.stats["backtracks"] >= self.max_backtracks
-                ):
-                    return None
+                if use_forward_checking and saved_domains:
+                    self.domains = saved_domains
 
         return None
 
-    def _backtracking_stats(
-        self, assignment: Dict[Any, Any], use_mrv: bool, use_degree: bool, use_lcv: bool
-    ) -> Optional[Dict[Any, Any]]:
-        """
-        Recursive backtracking without forward checking with statistics.
-        """
-        # Check if we've exceeded the maximum allowed backtracks
-        if (
-            self.max_backtracks is not None
-            and self.stats["backtracks"] >= self.max_backtracks
-        ):
-            return None
+    def get_all_solutions(self, limit: int = None) -> List[Dict[V, D]]:
+        """Find all solutions (or up to limit solutions)."""
+        solutions = []
+        self._find_all_solutions({}, solutions, limit)
+        return solutions
 
-        # If assignment is complete, return it
-        if len(assignment) == len(self.variables):
-            return assignment
+    def _find_all_solutions(
+        self, assignment: Dict[V, D], solutions: List[Dict[V, D]], limit: int = None
+    ):
+        """Helper method to find all solutions."""
+        if limit is not None and len(solutions) >= limit:
+            return
 
-        # Select unassigned variable
-        var = self._select_unassigned_variable(assignment, use_mrv, use_degree)
+        if self.is_complete(assignment):
+            solutions.append(assignment.copy())
+            return
+
+        var = self.select_unassigned_variable(assignment)
         if var is None:
-            return None
+            return
 
-        # Order domain values
-        values = self._order_domain_values(var, assignment, use_lcv)
-
-        # If there are no values, backtrack immediately
-        if not values:
-            self.stats["backtracks"] += 1
-            if (
-                self.max_backtracks is not None
-                and self.stats["backtracks"] >= self.max_backtracks
-            ):
-                return None
-            return None
-
-        for value in values:
-            # Increment checks counter
-            self.stats["checks"] += 1
+        for value in self.order_domain_values(var, assignment):
             if self.is_consistent(var, value, assignment):
                 assignment[var] = value
-                self.stats["assignments"] += 1
-                result = self._backtracking_stats(
-                    assignment, use_mrv, use_degree, use_lcv
-                )
-                if result is not None:
-                    return result
-                # Backtrack
+                self._find_all_solutions(assignment, solutions, limit)
                 del assignment[var]
-                self.stats["backtracks"] += 1
-                # Check again after incrementing backtracks
-                if (
-                    self.max_backtracks is not None
-                    and self.stats["backtracks"] >= self.max_backtracks
-                ):
-                    return None
 
-        return None
-
-    def _backtracking_with_fc_stats(
-        self,
-        assignment: Dict[Any, Any],
-        domains: Dict[Any, Set[Any]],
-        use_mrv: bool,
-        use_degree: bool,
-        use_lcv: bool,
-        use_ac3: bool = False,
-    ) -> Optional[Dict[Any, Any]]:
-        """
-        Recursive backtracking with forward checking and statistics.
-        When use_ac3 is True, it was already applied as preprocessing.
-        """
-        # Check if we've exceeded the maximum allowed backtracks
-        if (
-            self.max_backtracks is not None
-            and self.stats["backtracks"] >= self.max_backtracks
-        ):
-            return None
-
-        # If assignment is complete, return it
-        if len(assignment) == len(self.variables):
-            return assignment
-
-        # Select unassigned variable
-        var = self._select_unassigned_variable_fc(
-            assignment, domains, use_mrv, use_degree
-        )
-        if var is None:
-            return None
-
-        # Order domain values
-        values = self._order_domain_values_fc(var, assignment, domains, use_lcv)
-
-        # If there are no values, backtrack immediately
-        if not values:
-            self.stats["backtracks"] += 1
-            if (
-                self.max_backtracks is not None
-                and self.stats["backtracks"] >= self.max_backtracks
-            ):
-                return None
-            return None
-
-        for value in values:
-            self.stats["checks"] += 1
-            if self.is_consistent(var, value, assignment):
-                assignment[var] = value
-                self.stats["assignments"] += 1
-
-                # Save current domains for backtracking
-                old_domains = {v: set(domains[v]) for v in domains}
-
-                # Update domain for the assigned variable
-                domains[var] = {value}
-
-                # Perform forward checking
-                if self._forward_check(var, value, assignment, domains):
-                    # Don't apply AC-3 during search to prevent hanging
-                    # It was already applied as preprocessing if use_ac3=True
-                    result = self._backtracking_with_fc_stats(
-                        assignment, domains, use_mrv, use_degree, use_lcv, use_ac3
-                    )
-
-                    if result is not None:
-                        return result
-
-                # Restore domains and remove assignment
-                for v in domains:
-                    domains[v] = old_domains[v]
-                del assignment[var]
-                self.stats["backtracks"] += 1
-                # Check again after incrementing backtracks
-                if (
-                    self.max_backtracks is not None
-                    and self.stats["backtracks"] >= self.max_backtracks
-                ):
-                    return None
-
-        return None
+                if limit is not None and len(solutions) >= limit:
+                    return
