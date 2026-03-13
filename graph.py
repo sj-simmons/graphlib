@@ -661,6 +661,59 @@ def rb_graph_(
     return graph
 
 
+def erdos_renyi_(
+    graph: T,
+    n: int = 20,
+    p: float = 0.5,
+    weight_range: Tuple[Union[int, float], Union[int, float]] = (1, 10),
+    seed: Optional[int] = None,
+) -> T:
+    """
+    Generate a random Erdos-Renyi graph G(n, p).
+
+    In G(n, p) each possible edge between distinct vertices is included with
+    independent probability p.
+
+    Args:
+        graph: An empty instance of a subclass of UndirectedGraph_ to populate
+        n: Number of nodes in the graph
+        p: Probability for edge inclusion (0 <= p <= 1)
+        weight_range: Tuple (min_weight, max_weight) for edge weights
+        seed: Random seed for reproducibility
+
+    Returns:
+        T: The populated Erdos-Renyi graph
+
+    Raises:
+        ValueError: If parameters are invalid
+        AssertionError: If graph is not empty
+    """
+    assert len(graph) == 0, "You probably wanted to start with an empty graph!"
+
+    if n <= 0:
+        raise ValueError("n must be positive")
+    if p < 0 or p > 1:
+        raise ValueError("p must be between 0 and 1")
+    if weight_range[0] > weight_range[1]:
+        raise ValueError("min_weight must be <= max_weight")
+
+    # Initialize random number generator
+    rng = random.Random(seed)
+
+    # Add vertices
+    for i in range(n):
+        graph.add_vertex(i)
+
+    # For each possible unordered pair, add edge with probability p
+    for i in range(n):
+        for j in range(i + 1, n):
+            if rng.random() < p:
+                weight = round(rng.uniform(weight_range[0], weight_range[1]), 2)
+                graph.add_edge(i, j, weight)
+
+    return graph
+
+
 def barabasi_albert_(
     graph: T,
     n: int = 100,
@@ -1006,6 +1059,16 @@ if __name__ == "__main__":
     print(f"Number of edges: {len(graph_rb.get_edges())}")
     expected_edges = int(p1_rb * n_rb * (n_rb - 1) / 2)
     print(f"Expected edges: {expected_edges}")
+
+    # Test Erdos-Renyi graph
+    n_er = 40
+    p_er = 0.2
+    graph_er = erdos_renyi_(UndirectedGraph_(), n=n_er, p=p_er, seed=42)
+    print(f"\nErdos-Renyi graph (n={n_er}, p={p_er}):")
+    print(f"Number of vertices: {len(graph_er)}")
+    print(f"Number of edges: {len(graph_er.get_edges())}")
+    expected_edges_er = int(p_er * n_er * (n_er - 1) / 2)
+    print(f"Expected average edges: {expected_edges_er}")
 
     if HAS_NX_MPL:
         # Figure 1: Complete graph and 20-node graph
