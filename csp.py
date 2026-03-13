@@ -32,6 +32,8 @@ class CSP(Generic[V, D]):
         self.domains: Dict[V, List[D]] = {}
         self.constraints: Dict[V, List[Constraint[V, D]]] = {}
         self._current_assignment: Dict[V, D] = {}
+        # Add backtracking counter
+        self.backtrack_count: int = 0
 
     def add_variable(self, variable: V, domain: List[D]) -> None:
         """Add a variable with its domain."""
@@ -129,6 +131,8 @@ class CSP(Generic[V, D]):
         Main solving method using backtracking search.
         Returns a solution assignment or None if no solution exists.
         """
+        # Reset backtrack counter before starting search
+        self.backtrack_count = 0
         return self._backtrack({}, use_forward_checking)
 
     def _backtrack(
@@ -158,6 +162,8 @@ class CSP(Generic[V, D]):
                         # Restore domains and try next value
                         self.domains = saved_domains
                         del assignment[var]
+                        # Increment backtrack counter (failed forward check)
+                        self.backtrack_count += 1
                         continue
 
                 # Recursive call
@@ -169,7 +175,11 @@ class CSP(Generic[V, D]):
                 del assignment[var]
                 if use_forward_checking and saved_domains:
                     self.domains = saved_domains
+                # Increment backtrack counter (recursive call failed)
+                self.backtrack_count += 1
 
+        # Increment backtrack counter (exhausted all values for this variable)
+        self.backtrack_count += 1
         return None
 
     def get_all_solutions(self, limit: int = None) -> List[Dict[V, D]]:
@@ -201,3 +211,6 @@ class CSP(Generic[V, D]):
 
                 if limit is not None and len(solutions) >= limit:
                     return
+    def get_backtrack_count(self) -> int:
+        """Return the number of backtracks performed in the last solve attempt."""
+        return self.backtrack_count
