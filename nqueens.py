@@ -77,7 +77,7 @@ if solution is None:
 else:
     if n <= 8:
         print(solution)
-    print("backtracks: ", nqueens.backtrack_count)
+    print("backtracks: ", nqueens.get_backtrack_count())
     if n <= 60:
         show_solution(solution)
 
