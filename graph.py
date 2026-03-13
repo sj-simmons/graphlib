@@ -1011,6 +1011,12 @@ except ImportError as e:
     HAS_NX_MPL = False
 
 if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Demo creating various graphs.")
+    parser.add_argument("-show", help="Toggle showing graphs", action="store_false")
+    args = parser.parse_args()
+
     # Test complete graph
     print("Testing complete graph:")
     graph = complete_(UndirectedGraph_(), n=8)
@@ -1023,15 +1029,25 @@ if __name__ == "__main__":
     print(f"Number of vertices: {len(graph20)}")
     print(f"Number of edges: {len(graph20.get_edges())}")
 
+    # Test Erdos-Renyi graph
+    n_er = 30
+    p_er = 0.2
+    graph_er = erdos_renyi_(UndirectedGraph_(), n=n_er, p=p_er, seed=42)
+    print(f"\nErdos-Renyi graph (n={n_er}, p={p_er}):")
+    print(f"Number of vertices: {len(graph_er)}")
+    print(f"Number of edges: {len(graph_er.get_edges())}")
+    expected_edges_er = int(p_er * n_er * (n_er - 1) / 2)
+    print(f"Expected average edges: {expected_edges_er}")
+
     # Test Watts-Strogatz graph
-    n_ws, k = 40, 6
+    n_ws, k = 30, 6
     graph_ws = watts_strogatz_(UndirectedGraph_(), n=n_ws, k=k)
     print(f"\nWatts-Strogatz graph (n={n_ws}, k={k}):")
     print(f"Number of vertices: {len(graph_ws)}")
     print(f"Number of edges: {len(graph_ws.get_edges())}")
 
     # Test Barabási–Albert graph
-    n_ba, m = 40, 3
+    n_ba, m = 30, 3
     graph_ba = barabasi_albert_(UndirectedGraph_(), n=n_ba, m=m)
     print(f"\nBarabási–Albert graph (n={n_ba}, m={m}):")
     print(f"Number of vertices: {len(graph_ba)}")
@@ -1060,17 +1076,7 @@ if __name__ == "__main__":
     expected_edges = int(p1_rb * n_rb * (n_rb - 1) / 2)
     print(f"Expected edges: {expected_edges}")
 
-    # Test Erdos-Renyi graph
-    n_er = 40
-    p_er = 0.2
-    graph_er = erdos_renyi_(UndirectedGraph_(), n=n_er, p=p_er, seed=42)
-    print(f"\nErdos-Renyi graph (n={n_er}, p={p_er}):")
-    print(f"Number of vertices: {len(graph_er)}")
-    print(f"Number of edges: {len(graph_er.get_edges())}")
-    expected_edges_er = int(p_er * n_er * (n_er - 1) / 2)
-    print(f"Expected average edges: {expected_edges_er}")
-
-    if HAS_NX_MPL:
+    if args.show and HAS_NX_MPL:
         # Figure 1: Complete graph and 20-node graph
         fig1, axes1 = plt.subplots(1, 2, figsize=(16, 8))
 
@@ -1090,16 +1096,23 @@ if __name__ == "__main__":
         plt.show()
 
         # Figure 2: Watts-Strogatz and Barabási–Albert graphs
-        fig2, axes2 = plt.subplots(1, 2, figsize=(16, 8))
+        fig2, axes2 = plt.subplots(1, 3, figsize=(18, 8))
+
+        # Erdos-Renyi graph
+        graph_er = erdos_renyi_(UndirectedGraph_(), n=n_er, p=p_er, seed=42)
+        ax3 = axes2[0]
+        nx2ax(graph2nx(graph_er), ax3, seed=42, show_weights=True)
+        ax3.set_title(f"Erdos-Renyi (n={n_er}, p={p_er})")
+        ax3.axis("off")
 
         # Watts-Strogatz graph
-        ax3 = axes2[0]
+        ax3 = axes2[1]
         nx2ax(graph2nx(graph_ws), ax3, seed=42, show_weights=True)
         ax3.set_title(f"Watts-Strogatz (n={n_ws}, k={k})")
         ax3.axis("off")
 
         # Barabási–Albert graph
-        ax4 = axes2[1]
+        ax4 = axes2[2]
         nx2ax(graph2nx(graph_ba), ax4, seed=42, show_weights=True)
         ax4.set_title(f"Barabási–Albert (n={n_ba}, m={m})")
         ax4.axis("off")
@@ -1110,17 +1123,26 @@ if __name__ == "__main__":
         # Figure 3: Large graphs without labels using largenx2ax
         print("\nGenerating large graph for Figure 3...\n")
 
+        # Create large Erdos-Renyi graph
+        n_er_large, p_large = 200, 0.2
+        graph_er_large = erdos_renyi_(
+            UndirectedGraph_(), n=n_er_large, p=p_large, seed=42
+        )
+        print(f"Large Erdos-Renyi graph (n={n_er_large}, p={p_large}):")
+        print(f"Number of vertices: {len(graph_er_large)}")
+        print(f"Number of edges: {len(graph_er_large.get_edges())}")
+
         # Create large Watts-Strogatz graph
-        n_ws_large, k_large = 300, 8
+        n_ws_large, k_large = 200, 8
         graph_ws_large = watts_strogatz_(
             UndirectedGraph_(), n=n_ws_large, k=k_large, seed=42
         )
-        print(f"Large Watts-Strogatz graph (n={n_ws_large}, k={k_large}):")
+        print(f"\nLarge Watts-Strogatz graph (n={n_ws_large}, k={k_large}):")
         print(f"Number of vertices: {len(graph_ws_large)}")
         print(f"Number of edges: {len(graph_ws_large.get_edges())}")
 
         # Create large Barabási–Albert graph
-        n_ba_large, m_large = 300, 3
+        n_ba_large, m_large = 200, 3
         graph_ba_large = barabasi_albert_(
             UndirectedGraph_(), n=n_ba_large, m=m_large, seed=42
         )
@@ -1129,16 +1151,22 @@ if __name__ == "__main__":
         print(f"Number of edges: {len(graph_ba_large.get_edges())}")
 
         # Create Figure 3
-        fig3, axes3 = plt.subplots(1, 2, figsize=(16, 8))
+        fig3, axes3 = plt.subplots(1, 3, figsize=(18, 8))
+
+        # Large Erdos-Renyi graph
+        ax5 = axes3[0]
+        largenx2ax(graph2nx(graph_er_large), ax5, seed=42)
+        ax5.set_title(f"Large Erdos-Renyi (n={n_er_large}, p={p_large})")
+        ax5.axis("off")
 
         # Large Watts-Strogatz graph
-        ax5 = axes3[0]
+        ax5 = axes3[1]
         largenx2ax(graph2nx(graph_ws_large), ax5, seed=42)
         ax5.set_title(f"Large Watts-Strogatz (n={n_ws_large}, k={k_large})")
         ax5.axis("off")
 
         # Large Barabási–Albert graph
-        ax6 = axes3[1]
+        ax6 = axes3[2]
         largenx2ax(graph2nx(graph_ba_large), ax6, seed=42)
         ax6.set_title(f"Large Barabási–Albert (n={n_ba_large}, m={m_large})")
         ax6.axis("off")
@@ -1191,7 +1219,7 @@ if __name__ == "__main__":
 
         # Create Figure 5: Visualize RB model graphs
         print("\nGenerating RB model graph for Figure 5...\n")
-        fig5, axes5 = plt.subplots(1, 2, figsize=(10, 8))
+        fig5, axes5 = plt.subplots(1, 2, figsize=(16, 8))
         ax9 = axes5[0]
         g_nx = graph2nx(graph_rb)
         try:

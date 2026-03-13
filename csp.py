@@ -211,6 +211,7 @@ class CSP(Generic[V, D]):
 
                 if limit is not None and len(solutions) >= limit:
                     return
+
     def get_backtrack_count(self) -> int:
         """Return the number of backtracks performed in the last solve attempt."""
         return self.backtrack_count
