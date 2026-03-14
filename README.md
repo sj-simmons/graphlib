@@ -29,8 +29,7 @@ This project implements an undirected graph data structure with search algorithm
 
 **Visualization functions:**
 - `graph2nx(graph)` - Convert UndirectedGraph to networkx.Graph object
-- `nx2ax(nx_graph, ax, seed=42, show_weights=True, pos=None)` - Draw networkx graph on matplotlib axis
-- `largenx2ax(nx_graph, ax, seed=42, pos=None)` - Draw large networkx graphs without labels for better visualization
+- `nx2ax(nx_graph, ax, show_weights=True, pos=None)` - Draw networkx graph on matplotlib axis
 - `HAS_NX_MPL` - Boolean flag indicating if matplotlib and networkx are available
 
 ### uninformed_search.py

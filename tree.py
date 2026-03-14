@@ -346,7 +346,7 @@ if __name__ == "__main__":
 
         # Plot original graph
         ax = axes1[0]
-        node_size = nx2ax(nx_original, ax, seed=42, show_weights=True, pos=pos)
+        node_size = nx2ax(nx_original, ax, show_weights=True, pos=pos)
         # Highlight start vertex
         nx.draw_networkx_nodes(
             nx_original,
@@ -364,7 +364,7 @@ if __name__ == "__main__":
 
         # Plot DFS tree - use the same layout for consistency
         ax = axes1[1]
-        node_size = nx2ax(nx_dfs, ax, seed=42, show_weights=True, pos=pos)
+        node_size = nx2ax(nx_dfs, ax, show_weights=True, pos=pos)
         # Highlight start vertex
         nx.draw_networkx_nodes(
             nx_dfs,
@@ -384,7 +384,7 @@ if __name__ == "__main__":
 
         # Plot BFS tree - use the same layout for consistency
         ax = axes1[2]
-        node_size = nx2ax(nx_bfs, ax, seed=42, show_weights=True, pos=pos)
+        node_size = nx2ax(nx_bfs, ax, show_weights=True, pos=pos)
         # Highlight start vertex
         nx.draw_networkx_nodes(
             nx_bfs,
@@ -423,7 +423,7 @@ if __name__ == "__main__":
 
             # Plot MST in first subplot
             ax1 = axes2[0]
-            node_size = nx2ax(nx_mst, ax1, seed=42, show_weights=True, pos=pos)
+            node_size = nx2ax(nx_mst, ax1, show_weights=True, pos=pos)
             # Highlight start vertex
             nx.draw_networkx_nodes(
                 nx_mst,
@@ -443,7 +443,7 @@ if __name__ == "__main__":
 
             # Plot SPT in second subplot
             ax2 = axes2[1]
-            node_size = nx2ax(nx_spt, ax2, seed=42, show_weights=True, pos=pos)
+            node_size = nx2ax(nx_spt, ax2, show_weights=True, pos=pos)
             # Highlight start vertex
             nx.draw_networkx_nodes(
                 nx_spt,

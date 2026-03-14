@@ -241,14 +241,7 @@ class UndirectedGraph(uninformed_search.UndirectedGraph):
 
 
 if __name__ == "__main__":
-    from graph import (
-        graph2nx,
-        nx2ax,
-        largenx2ax,
-        HAS_NX_MPL,
-        watts_strogatz_,
-        barabasi_albert_,
-    )
+    from graph import graph2nx, nx2ax, HAS_NX_MPL, watts_strogatz_, barabasi_albert_
     import random
 
     def demo(n):
@@ -372,7 +365,7 @@ if __name__ == "__main__":
             nx_graph = graph2nx(graph)
 
             # Use a consistent layout for all subplots
-            pos = nx.spring_layout(nx_graph, seed=42)
+            pos = nx.spring_layout(nx_graph)
 
             # Create a figure to display selected search paths (1x3 grid for 3 algorithms)
             fig, axes = plt.subplots(1, 3, figsize=(18, 6))
@@ -388,10 +381,7 @@ if __name__ == "__main__":
                 ax = axes[i]
 
                 # Draw the base graph using nx2ax from graph.py with the precomputed layout
-                if len(graph) < 40:
-                    node_size = nx2ax(nx_graph, ax, seed=42, show_weights=True, pos=pos)
-                else:
-                    node_size = largenx2ax(nx_graph, ax, seed=42, pos=pos)
+                node_size = nx2ax(nx_graph, ax, pos=pos)
 
                 # Highlight the path if found
                 if path:

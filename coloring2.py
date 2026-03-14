@@ -1,4 +1,4 @@
-from csp import CSP
+from csp2 import CSP
 from typing import Any, Dict, List, Set, Optional, Tuple
 from graph import UndirectedGraph_
 import sys
@@ -55,7 +55,7 @@ class GraphColoringCSP(CSP):
         try:
             import matplotlib.pyplot as plt
             import networkx as nx
-            from graph import graph2nx, nx2ax, largenx2ax
+            from graph import graph2nx, nx2ax
 
             if not solution:
                 print("No solution to visualize")
@@ -78,10 +78,7 @@ class GraphColoringCSP(CSP):
 
             # Draw graph
             fig, ax = plt.subplots(figsize=(10, 8))
-            if len(self.graph) <= 50:
-                node_size = nx2ax(nx_graph, ax, seed=42, show_weights=False, pos=pos)
-            else:
-                node_size = largenx2ax(nx_graph, ax, seed=42, tiny=False, pos=pos)
+            node_size = nx2ax(nx_graph, ax, pos=pos)
 
             # Override with colored nodes
             nx.draw_networkx_nodes(
@@ -102,8 +99,9 @@ class GraphColoringCSP(CSP):
             print("Solution:", solution)
 
 
-def compare_heuristics(graph, num_colors, max_backtracks=30_000, display=True, title=""):
-
+def compare_heuristics(
+    graph, num_colors, max_backtracks=30_000, display=True, title=""
+):
     print("Maximum backtracks allowed:", max_backtracks)
     heuristic_configs = [
         ("No heuristics", False, False, False, True, False),  # Enable forward checking
@@ -145,7 +143,6 @@ def compare_heuristics(graph, num_colors, max_backtracks=30_000, display=True, t
 
 
 if __name__ == "__main__":
-
     # Demonstrate the CSP solver on graph coloring problems.
 
     from graph import complete_, planar_, rb_graph_
@@ -155,14 +152,16 @@ if __name__ == "__main__":
     print("4-coloring:")
     compare_heuristics(complete_(UndirectedGraph_(), n=5), num_colors=4, title=title)
     print("5-coloring:")
-    compare_heuristics(complete_(UndirectedGraph_(), n=5), num_colors=5, display=False, title=title)
+    compare_heuristics(
+        complete_(UndirectedGraph_(), n=5), num_colors=5, display=False, title=title
+    )
 
     print("\nHeuristic comparison on 3-colorable planar graphs:")
-    #graph = planar_(UndirectedGraph_(), n=1000, remove_probability=0.13, seed=117)
-    #graph = planar_(UndirectedGraph_(), n=179, remove_probability=0, seed=1)
-    #graph = planar_(UndirectedGraph_(), n=200, remove_probability=0, seed=1)
+    # graph = planar_(UndirectedGraph_(), n=1000, remove_probability=0.13, seed=117)
+    # graph = planar_(UndirectedGraph_(), n=179, remove_probability=0, seed=1)
+    # graph = planar_(UndirectedGraph_(), n=200, remove_probability=0, seed=1)
     graph = planar_(UndirectedGraph_(), n=360, remove_probability=0.05, seed=1)
-    #graph = rb_graph_(UndirectedGraph_(), n=30, seed=1)
+    # graph = rb_graph_(UndirectedGraph_(), n=30, seed=1)
 
     print(f"3-coloring a graph of size {len(graph)}")
     compare_heuristics(graph, num_colors=3)

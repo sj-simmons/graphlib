@@ -938,32 +938,39 @@ try:
         seed=42,
         show_weights: bool = True,
         pos=None,
+        num_nodes_thresh=50,  # num of nodes to not use node labels, shrink nodes, ...
         coloring=None,
     ):
+        num_nodes = len(nx_graph.nodes())
+
         # Create a layout for the nodes if not provided
         if pos is None:
             pos = nx.spring_layout(nx_graph, seed=seed)
 
-        max_label_len = max(len(str(node)) for node in list(nx_graph))
-        node_size = 300 + max(max_label_len - 2, 0) * 300
+        if num_nodes <= num_nodes_thresh:
+            max_label_len = max(len(str(node)) for node in list(nx_graph))
+            node_size = 300 + max(max_label_len - 2, 0) * 300
+        else:
+            node_size = 20 if num_nodes > 180 else 40
 
         # Plot graph
         nx.draw(
             nx_graph,
             pos,
             ax=ax,
-            with_labels=True,
+            with_labels=True if num_nodes <= num_nodes_thresh else False,
             node_color=colormap(nx_graph, coloring) if coloring else "lightgray",
             node_size=node_size,
-            font_size=10,
+            font_size=10 if num_nodes <= num_nodes_thresh else 8,
             font_weight="bold",
             edge_color="gray",
-            width=2,
+            width=2 if num_nodes <= num_nodes_thresh else 0.5,
             edgecolors="black",
+            alpha=1 if num_nodes <= num_nodes_thresh else 0.7,
         )
 
         # Draw edge labels (weights) if requested
-        if show_weights:
+        if num_nodes <= num_nodes_thresh and show_weights:
             edge_labels = nx.get_edge_attributes(nx_graph, "weight")
             # Format weights to 1 decimal place for cleaner display
             formatted_edge_labels = {}
@@ -981,42 +988,6 @@ try:
                 font_color="firebrick",
                 bbox=dict(alpha=0.7, facecolor="white", edgecolor="none"),
             )
-
-        return node_size
-
-    def largenx2ax(
-        nx_graph: "nx.Graph", ax, seed=42, pos=None, tiny=True, coloring=None
-    ):
-        """
-        Display large graphs without node labels or edge weights for better visualization.
-
-        Args:
-            nx_graph: networkx graph to display
-            ax: matplotlib axis to draw on
-            seed: random seed for layout reproducibility
-            pos: precomputed node positions (optional)
-        """
-        # Create a layout for the nodes if not provided
-        if pos is None:
-            pos = nx.spring_layout(nx_graph, seed=seed)
-
-        node_size = 20 if tiny else 40
-
-        # Plot graph without labels
-        nx.draw(
-            nx_graph,
-            pos,
-            ax=ax,
-            with_labels=False,  # No node labels for large graphs
-            node_color=colormap(nx_graph, coloring) if coloring else "lightgray",
-            node_size=node_size,  # Smaller nodes for large graphs
-            font_size=8,
-            font_weight="bold",
-            edge_color="gray",
-            width=0.5,  # Thinner edges for large graphs
-            edgecolors="black",
-            alpha=0.7,  # Slightly transparent for better visualization
-        )
 
         return node_size
 
@@ -1048,7 +1019,7 @@ if __name__ == "__main__":
     # Test Erdos-Renyi graph
     n_er = 30
     p_er = 0.2
-    graph_er = erdos_renyi_(UndirectedGraph_(), n=n_er, p=p_er, seed=42)
+    graph_er = erdos_renyi_(UndirectedGraph_(), n=n_er, p=p_er)
     print(f"\nErdos-Renyi graph (n={n_er}, p={p_er}):")
     print(f"Number of vertices: {len(graph_er)}")
     print(f"Number of edges: {len(graph_er.get_edges())}")
@@ -1072,7 +1043,7 @@ if __name__ == "__main__":
     # Test small planar graph (maximal planar, no edge removal)
     n_planar_small = 20
     graph_planar_small = planar_(
-        UndirectedGraph_(), n=n_planar_small, remove_probability=0.0, seed=42
+        UndirectedGraph_(), n=n_planar_small, remove_probability=0.02
     )
     print(
         f"\nSmall planar graph (n={n_planar_small}: {len(graph_planar_small)} nodes, maximal):"
@@ -1085,7 +1056,7 @@ if __name__ == "__main__":
     p1_rb = 0.3
     d_rb = 3
 
-    graph_rb = rb_graph_(UndirectedGraph_(), n=n_rb, d=d_rb, p1=p1_rb, seed=42)
+    graph_rb = rb_graph_(UndirectedGraph_(), n=n_rb, d=d_rb, p1=p1_rb)
     print(f"\nRB model graph (n={n_rb}, p1={p1_rb}):")
     print(f"Number of vertices: {len(graph_rb)}")
     print(f"Number of edges: {len(graph_rb.get_edges())}")
@@ -1098,13 +1069,13 @@ if __name__ == "__main__":
 
         # Complete graph
         ax1 = axes1[0]
-        nx2ax(graph2nx(graph), ax1, seed=42, show_weights=True)
+        nx2ax(graph2nx(graph), ax1)
         ax1.set_title("Complete Graph K_8")
         ax1.axis("off")
 
         # 20-node graph
         ax2 = axes1[1]
-        nx2ax(graph2nx(graph20), ax2, seed=42, show_weights=True)
+        nx2ax(graph2nx(graph20), ax2)
         ax2.set_title("20-node Graph")
         ax2.axis("off")
 
@@ -1115,53 +1086,47 @@ if __name__ == "__main__":
         fig2, axes2 = plt.subplots(1, 3, figsize=(18, 8))
 
         # Erdos-Renyi graph
-        graph_er = erdos_renyi_(UndirectedGraph_(), n=n_er, p=p_er, seed=42)
+        graph_er = erdos_renyi_(UndirectedGraph_(), n=n_er, p=p_er)
         ax3 = axes2[0]
-        nx2ax(graph2nx(graph_er), ax3, seed=42, show_weights=True)
+        nx2ax(graph2nx(graph_er), ax3)
         ax3.set_title(f"Erdos-Renyi (n={n_er}, p={p_er})")
         ax3.axis("off")
 
         # Watts-Strogatz graph
         ax3 = axes2[1]
-        nx2ax(graph2nx(graph_ws), ax3, seed=42, show_weights=True)
+        nx2ax(graph2nx(graph_ws), ax3)
         ax3.set_title(f"Watts-Strogatz (n={n_ws}, k={k})")
         ax3.axis("off")
 
         # Barabási–Albert graph
         ax4 = axes2[2]
-        nx2ax(graph2nx(graph_ba), ax4, seed=42, show_weights=True)
+        nx2ax(graph2nx(graph_ba), ax4)
         ax4.set_title(f"Barabási–Albert (n={n_ba}, m={m})")
         ax4.axis("off")
 
         plt.tight_layout()
         plt.show()
 
-        # Figure 3: Large graphs without labels using largenx2ax
+        # Figure 3: Large graphs without labels using nx2ax
         print("\nGenerating large graph for Figure 3...\n")
 
         # Create large Erdos-Renyi graph
-        n_er_large, p_large = 200, 0.2
-        graph_er_large = erdos_renyi_(
-            UndirectedGraph_(), n=n_er_large, p=p_large, seed=42
-        )
+        n_er_large, p_large = 100, 0.2
+        graph_er_large = erdos_renyi_(UndirectedGraph_(), n=n_er_large, p=p_large)
         print(f"Large Erdos-Renyi graph (n={n_er_large}, p={p_large}):")
         print(f"Number of vertices: {len(graph_er_large)}")
         print(f"Number of edges: {len(graph_er_large.get_edges())}")
 
         # Create large Watts-Strogatz graph
         n_ws_large, k_large = 200, 8
-        graph_ws_large = watts_strogatz_(
-            UndirectedGraph_(), n=n_ws_large, k=k_large, seed=42
-        )
+        graph_ws_large = watts_strogatz_(UndirectedGraph_(), n=n_ws_large, k=k_large)
         print(f"\nLarge Watts-Strogatz graph (n={n_ws_large}, k={k_large}):")
         print(f"Number of vertices: {len(graph_ws_large)}")
         print(f"Number of edges: {len(graph_ws_large.get_edges())}")
 
         # Create large Barabási–Albert graph
         n_ba_large, m_large = 200, 3
-        graph_ba_large = barabasi_albert_(
-            UndirectedGraph_(), n=n_ba_large, m=m_large, seed=42
-        )
+        graph_ba_large = barabasi_albert_(UndirectedGraph_(), n=n_ba_large, m=m_large)
         print(f"\nLarge Barabási–Albert graph (n={n_ba_large}, m={m_large}):")
         print(f"Number of vertices: {len(graph_ba_large)}")
         print(f"Number of edges: {len(graph_ba_large.get_edges())}")
@@ -1171,19 +1136,19 @@ if __name__ == "__main__":
 
         # Large Erdos-Renyi graph
         ax5 = axes3[0]
-        largenx2ax(graph2nx(graph_er_large), ax5, seed=42)
+        nx2ax(graph2nx(graph_er_large), ax5)
         ax5.set_title(f"Large Erdos-Renyi (n={n_er_large}, p={p_large})")
         ax5.axis("off")
 
         # Large Watts-Strogatz graph
         ax5 = axes3[1]
-        largenx2ax(graph2nx(graph_ws_large), ax5, seed=42)
+        nx2ax(graph2nx(graph_ws_large), ax5)
         ax5.set_title(f"Large Watts-Strogatz (n={n_ws_large}, k={k_large})")
         ax5.axis("off")
 
         # Large Barabási–Albert graph
         ax6 = axes3[2]
-        largenx2ax(graph2nx(graph_ba_large), ax6, seed=42)
+        nx2ax(graph2nx(graph_ba_large), ax6)
         ax6.set_title(f"Large Barabási–Albert (n={n_ba_large}, m={m_large})")
         ax6.axis("off")
 
@@ -1196,7 +1161,7 @@ if __name__ == "__main__":
         # Create large planar graph with edge removal
         n_planar_large = 100
         graph_planar_large = planar_(
-            UndirectedGraph_(), n=n_planar_large, remove_probability=0.3, seed=42
+            UndirectedGraph_(), n=n_planar_large, remove_probability=0.3
         )
         print(
             f"Large planar graph (using n={n_planar_large}: {len(graph_planar_large)} nodes, with 30% edge removal):"
@@ -1210,10 +1175,10 @@ if __name__ == "__main__":
         ax7 = axes4[0]
         g = graph2nx(graph_planar_small)
         try:
-            nx2ax(g, ax7, seed=42, show_weights=True, pos=nx.planar_layout(g))
+            nx2ax(g, ax7, pos=nx.planar_layout(g))
         except:
             print("not planar")
-            nx2ax(g, ax7, seed=42, show_weights=True)
+            nx2ax(g, ax7)
         ax7.set_title(f"Small Planar Graph (n={n_planar_small}, maximal)")
         ax7.axis("off")
 
@@ -1221,10 +1186,10 @@ if __name__ == "__main__":
         ax8 = axes4[1]
         g = graph2nx(graph_planar_large)
         try:
-            largenx2ax(g, ax8, seed=42, pos=nx.planar_layout(g))
+            nx2ax(g, ax8, pos=nx.planar_layout(g))
         except:
             print("not planar")
-            largenx2ax(g, ax8, seed=42)
+            nx2ax(g, ax8)
         ax8.set_title(
             f"Large Planar Graph (using n={n_planar_large}, 30% edges removed)"
         )
@@ -1239,10 +1204,10 @@ if __name__ == "__main__":
         ax9 = axes5[0]
         g_nx = graph2nx(graph_rb)
         try:
-            largenx2ax(g_nx, ax9, seed=42, pos=nx.planar_layout(g_nx))
+            nx2ax(g_nx, ax9, pos=nx.planar_layout(g_nx))
         except:
             print("not planar")
-            largenx2ax(g_nx, ax9, seed=42)
+            nx2ax(g_nx, ax9)
         ax9.set_title(f"RB Model Graph (n={n_rb}, p1={p1_rb})")
         ax9.axis("off")
 
@@ -1250,7 +1215,7 @@ if __name__ == "__main__":
         n_rb = 60
         p1_rb = 0.5
         d_rb = 3
-        graph_rb_2 = rb_graph_(UndirectedGraph_(), n=n_rb, d=d_rb, p1=p1_rb, seed=42)
+        graph_rb_2 = rb_graph_(UndirectedGraph_(), n=n_rb, d=d_rb, p1=p1_rb)
         print(f"RB model graph (n={n_rb}, p1={p1_rb}):")
         print(f"Number of vertices: {len(graph_rb_2)}")
         print(f"Number of edges: {len(graph_rb_2.get_edges())}")
@@ -1258,10 +1223,10 @@ if __name__ == "__main__":
         print(f"Expected edges: {expected_edges}")
         g_nx = graph2nx(graph_rb_2)
         try:
-            largenx2ax(g_nx, ax10, seed=42, pos=nx.planar_layout(g_nx))
+            nx2ax(g_nx, ax10, pos=nx.planar_layout(g_nx))
         except:
             print("not planar")
-            largenx2ax(g_nx, ax10, seed=42)
+            nx2ax(g_nx, ax10)
         ax10.set_title(f"RB Model Graph (n={n_rb}, p1={p1_rb})")
         ax10.axis("off")
 
