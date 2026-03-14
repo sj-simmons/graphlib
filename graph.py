@@ -1,9 +1,6 @@
 from collections import deque
 import random
-from typing import Any, Dict, List, Optional, Tuple, Set, Union, TYPE_CHECKING, TypeVar
-
-if TYPE_CHECKING:
-    import networkx as nx
+from typing import Any, Dict, List, Optional, Tuple, Set, Union, TypeVar
 
 
 class UndirectedGraph_:
@@ -925,7 +922,24 @@ try:
 
         return nx_graph
 
-    def nx2ax(nx_graph: "nx.Graph", ax, seed=42, show_weights: bool = True, pos=None):
+    def colormap(nx_graph, coloring):
+        color_map = []
+        nodes = nx_graph.nodes()
+        cmap = plt.cm.Set2 if len(nodes) <= 50 else plt.cm.tab10
+        for node in nodes:
+            color_idx = coloring.get(str(node), 0)
+            color = cmap(color_idx / max(1, len(set(coloring.values())) - 1))
+            color_map.append(color)
+        return color_map
+
+    def nx2ax(
+        nx_graph: "nx.Graph",
+        ax,
+        seed=42,
+        show_weights: bool = True,
+        pos=None,
+        coloring=None,
+    ):
         # Create a layout for the nodes if not provided
         if pos is None:
             pos = nx.spring_layout(nx_graph, seed=seed)
@@ -939,7 +953,7 @@ try:
             pos,
             ax=ax,
             with_labels=True,
-            node_color="lightgray",
+            node_color=colormap(nx_graph, coloring) if coloring else "lightgray",
             node_size=node_size,
             font_size=10,
             font_weight="bold",
@@ -970,7 +984,9 @@ try:
 
         return node_size
 
-    def largenx2ax(nx_graph: "nx.Graph", ax, seed=42, pos=None, tiny=True):
+    def largenx2ax(
+        nx_graph: "nx.Graph", ax, seed=42, pos=None, tiny=True, coloring=None
+    ):
         """
         Display large graphs without node labels or edge weights for better visualization.
 
@@ -992,7 +1008,7 @@ try:
             pos,
             ax=ax,
             with_labels=False,  # No node labels for large graphs
-            node_color="lightgray",
+            node_color=colormap(nx_graph, coloring) if coloring else "lightgray",
             node_size=node_size,  # Smaller nodes for large graphs
             font_size=8,
             font_weight="bold",
