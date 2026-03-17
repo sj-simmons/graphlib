@@ -184,6 +184,7 @@ class CSP(Generic[V, D]):
 
     def get_all_solutions(self, limit: int = None) -> List[Dict[V, D]]:
         """Find all solutions (or up to limit solutions)."""
+        self.__init__(self.n)  # resets order of self.domain[var] for all var
         solutions = []
         self._find_all_solutions({}, solutions, limit)
         return solutions

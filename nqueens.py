@@ -78,10 +78,9 @@ else:
     if n <= 8:
         print(solution)
     print("backtracks: ", nqueens.get_backtrack_count())
-    if n <= 60:
+    if n <= 30:
         show_solution(solution)
 
-quit()
 if n <= 8:
     solutions = nqueens.get_all_solutions()
     print("total number of solutions:", len(solutions))
