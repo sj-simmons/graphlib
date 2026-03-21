@@ -1,4 +1,5 @@
-from typing import Any
+from __future__ import annotations
+from typing import Any, Optional, Union, List, Tuple, Dict, cast
 from graph import UndirectedGraph_
 
 
@@ -6,7 +7,7 @@ class UndirectedGraph(UndirectedGraph_):
     def __init__(self) -> None:
         super().__init__()
 
-    def dfs_tree(self, start_vertex: Any) -> "UndirectedGraph":
+    def dfs_tree(self, start_vertex: Any) -> UndirectedGraph:
         """
         Perform Depth-First Search from the given start vertex and return the DFS tree.
 
@@ -47,7 +48,7 @@ class UndirectedGraph(UndirectedGraph_):
 
         return tree
 
-    def bfs_tree(self, start_vertex: Any) -> "UndirectedGraph":
+    def bfs_tree(self, start_vertex: Any) -> UndirectedGraph:
         """
         Perform Breadth-First Search from the given start vertex and return the BFS tree.
 
@@ -90,7 +91,7 @@ class UndirectedGraph(UndirectedGraph_):
 
         return tree
 
-    def prim_mst(self, start_vertex: Any = None) -> "UndirectedGraph":
+    def prim_mst(self, start_vertex: Optional[Any] = None) -> UndirectedGraph:
         """
         Find the Minimum Spanning Tree (MST) using Prim's algorithm.
 
@@ -122,7 +123,7 @@ class UndirectedGraph(UndirectedGraph_):
         # We'll use a priority queue to always pick the minimum weight edge
         import heapq
 
-        heap = []
+        heap: List[Tuple[Union[int, float], Any, Any]] = []
 
         # Track visited vertices
         visited = set([start_vertex])
@@ -154,7 +155,7 @@ class UndirectedGraph(UndirectedGraph_):
         # vertices reachable from start_vertex
         return mst
 
-    def spt(self, start_vertex: Any = None) -> "UndirectedGraph":
+    def spt(self, start_vertex: Optional[Any] = None) -> UndirectedGraph:
         """
         Find the Shortest Path Tree (SPT) from start_vertex to all reachable vertices
         using Dijkstra's algorithm. This is a slight modification of prim_mst.
@@ -187,15 +188,15 @@ class UndirectedGraph(UndirectedGraph_):
         # Unlike Prim's, we track total distance from start, not just edge weight
         import heapq
 
-        heap = []
+        heap: List[Tuple[Union[int, float], Any, Any]] = []
 
         # Track visited vertices and their distances from start
         visited = set([start_vertex])
-        distances = {start_vertex: 0}
+        distances: Dict[Any, Union[int, float]] = {start_vertex: 0}
 
         # Add all edges from start_vertex to the heap with their weights as distances
         for neighbor, weight in self.graph[start_vertex].items():
-            total_distance = weight  # Distance from start to neighbor
+            total_distance: Union[int, float] = weight  # Distance from start to neighbor
             heapq.heappush(heap, (total_distance, neighbor, start_vertex))
             distances[neighbor] = total_distance
 
@@ -213,12 +214,14 @@ class UndirectedGraph(UndirectedGraph_):
             spt.add_vertex(current)
             # Add edge with the original weight (not total distance)
             edge_weight = self.get_weight(parent, current)
-            spt.add_edge(parent, current, edge_weight)
+            # Since we're traversing edges that exist in the original graph, edge_weight should not be None
+            # Use cast to satisfy type checker
+            spt.add_edge(parent, current, cast(Union[int, float], edge_weight))
 
             # Update distances and add neighbors to heap
             for neighbor, weight in self.graph[current].items():
                 if neighbor not in visited:
-                    new_distance = total_distance + weight
+                    new_distance: Union[int, float] = total_distance + weight
                     # If we found a shorter path to neighbor, update
                     if neighbor not in distances or new_distance < distances[neighbor]:
                         distances[neighbor] = new_distance
@@ -231,6 +234,9 @@ class UndirectedGraph(UndirectedGraph_):
 
 if __name__ == "__main__":
     from graph import twenty_, graph2nx, nx2ax, HAS_NX_MPL
+    import matplotlib.pyplot as plt
+    import networkx as nx
+    from typing import Dict, Any
 
     graph = twenty_(UndirectedGraph())
 

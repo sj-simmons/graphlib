@@ -1,7 +1,7 @@
 from collections import deque
 import heapq
 import graph
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union, Deque, cast, Dict
 
 
 class UndirectedGraph(graph.UndirectedGraph_):
@@ -27,7 +27,9 @@ class UndirectedGraph(graph.UndirectedGraph_):
         if not self.has_vertex(start_vertex) or not self.has_vertex(goal_vertex):
             return None, 0
 
-        stack = [(start_vertex, [start_vertex], 0)]  # (vertex, path, total_weight)
+        stack: List[Tuple[Any, List[Any], Union[int, float]]] = [
+            (start_vertex, [start_vertex], 0)
+        ]  # (vertex, path, total_weight)
         visited = set([start_vertex])
 
         while stack:
@@ -65,7 +67,7 @@ class UndirectedGraph(graph.UndirectedGraph_):
             return None, 0
 
         # Queue will store (vertex, path, total_weight)
-        queue = deque()
+        queue: Deque[Tuple[Any, List[Any], Union[int, float]]] = deque()
         queue.append((start_vertex, [start_vertex], 0))
         visited = set([start_vertex])
 
@@ -105,8 +107,10 @@ class UndirectedGraph(graph.UndirectedGraph_):
 
         # Priority queue: (total_cost, vertex, path)
         # We use total_cost as the primary key for heapq
-        frontier = [(0, start_vertex, [start_vertex])]
-        visited = {start_vertex: 0}
+        frontier: List[Tuple[Union[int, float], Any, List[Any]]] = [
+            (0, start_vertex, [start_vertex])
+        ]
+        visited: Dict[Any, Union[int, float]] = {start_vertex: 0}
 
         while frontier:
             current_cost, current_vertex, path = heapq.heappop(frontier)
@@ -117,7 +121,7 @@ class UndirectedGraph(graph.UndirectedGraph_):
 
             # Explore neighbors
             for neighbor, edge_weight in self.graph[current_vertex].items():
-                new_cost = current_cost + edge_weight
+                new_cost = cast(Union[int, float], current_cost + edge_weight)
 
                 # If we haven't seen this neighbor, or we found a cheaper path to it
                 if neighbor not in visited.keys() or new_cost < visited[neighbor]:
@@ -149,11 +153,13 @@ class UndirectedGraph(graph.UndirectedGraph_):
 
         # Priority queue: (total_cost, vertex, path)
         # We use total_cost as the primary key for heapq
-        frontier = [(0, start_vertex, [start_vertex])]
+        frontier: List[Tuple[Union[int, float], Any, List[Any]]] = [
+            (0, start_vertex, [start_vertex])
+        ]
 
         # Track visited nodes and their best known cost
         visited = set()
-        cost_so_far = {start_vertex: 0}
+        cost_so_far: Dict[Any, Union[int, float]] = {start_vertex: 0}
 
         while frontier:
             current_cost, current_vertex, path = heapq.heappop(frontier)
@@ -171,7 +177,7 @@ class UndirectedGraph(graph.UndirectedGraph_):
 
             # Explore neighbors
             for neighbor, edge_weight in self.graph[current_vertex].items():
-                new_cost = current_cost + edge_weight
+                new_cost = cast(Union[int, float], current_cost + edge_weight)
 
                 # If we haven't seen this neighbor, or we found a cheaper path to it
                 if neighbor not in cost_so_far or new_cost < cost_so_far[neighbor]:

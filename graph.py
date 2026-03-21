@@ -268,7 +268,7 @@ def watts_strogatz_(
         for j in range(1, k // 2 + 1):
             neighbor = (node + j) % n
             # Sort to ensure undirected edge representation is consistent
-            edge = tuple(sorted((node, neighbor)))
+            edge = (node, neighbor) if node < neighbor else (neighbor, node)
             if edge not in edges_set:
                 edges_set.add(edge)
 
@@ -279,18 +279,17 @@ def watts_strogatz_(
         if rng.random() < beta:
             # Choose a new random node to connect to u
             # The new node must be different from u and not already connected to u
-            possible_nodes = [
-                i
-                for i in range(n)
-                if i != u
-                and tuple(sorted((u, i))) not in edges_set
-                and tuple(sorted((u, i))) not in rewired_edges_set
-            ]
+            possible_nodes = []
+            for i in range(n):
+                if i != u:
+                    edge = (u, i) if u < i else (i, u)
+                    if edge not in edges_set and edge not in rewired_edges_set:
+                        possible_nodes.append(i)
 
             if possible_nodes:
                 new_v = rng.choice(possible_nodes)
                 # Remove old edge (u, v) and add new edge (u, new_v)
-                rewired_edges_set.add(tuple(sorted((u, new_v))))
+                rewired_edges_set.add((u, new_v) if u < new_v else (new_v, u))
                 # Don't add the original edge
                 continue
 
@@ -353,7 +352,7 @@ def planar_(
     rng = random.Random(seed)
 
     # Generate n random points in [0, 1] x [0, 1]
-    points = [(rng.random(), rng.random()) for _ in range(n)]
+    points: List[Tuple[float, float]] = [(rng.random(), rng.random()) for _ in range(n)]
 
     # Handle small n cases
     if n <= 3:
@@ -394,7 +393,12 @@ def planar_(
     triangles = []
     triangles.append((n, n + 1, n + 2))
 
-    def in_circumcircle(p, a, b, c):
+    def in_circumcircle(
+        p: Tuple[float, float],
+        a: Tuple[float, float],
+        b: Tuple[float, float],
+        c: Tuple[float, float],
+    ) -> bool:
         ax, ay = a
         bx, by = b
         cx, cy = c
@@ -430,25 +434,33 @@ def planar_(
 
         for tri in triangles:
             a_idx, b_idx, c_idx = tri
-            a = points[a_idx] if a_idx < n else super_tri[a_idx - n]
-            b = points[b_idx] if b_idx < n else super_tri[b_idx - n]
-            c = points[c_idx] if c_idx < n else super_tri[c_idx - n]
+            point_a: Tuple[float, float] = (
+                points[a_idx] if a_idx < n else super_tri[a_idx - n]
+            )
+            point_b: Tuple[float, float] = (
+                points[b_idx] if b_idx < n else super_tri[b_idx - n]
+            )
+            point_c: Tuple[float, float] = (
+                points[c_idx] if c_idx < n else super_tri[c_idx - n]
+            )
 
-            if in_circumcircle(point, a, b, c):
+            if in_circumcircle(point, point_a, point_b, point_c):
                 bad_triangles.append(tri)
 
-        polygon_edges = []
+        polygon_edges: List[Tuple[int, int]] = []
         for tri in bad_triangles:
-            tri_edges = [(tri[0], tri[1]), (tri[1], tri[2]), (tri[2], tri[0])]
+            a, b, c = tri
+            tri_edges: List[Tuple[int, int]] = [(a, b), (b, c), (c, a)]
             for edge in tri_edges:
                 shared = False
                 for other_tri in bad_triangles:
                     if other_tri == tri:
                         continue
+                    other_a, other_b, other_c = other_tri
                     other_edges = [
-                        (other_tri[0], other_tri[1]),
-                        (other_tri[1], other_tri[2]),
-                        (other_tri[2], other_tri[0]),
+                        (other_a, other_b),
+                        (other_b, other_c),
+                        (other_c, other_a),
                     ]
                     if edge in other_edges or (edge[1], edge[0]) in other_edges:
                         shared = True
@@ -465,27 +477,28 @@ def planar_(
             triangles.append(new_tri)
 
     # Remove triangles containing super-triangle vertices
-    final_triangles = []
+    final_triangles: List[Tuple[int, int, int]] = []
     for tri in triangles:
         a_idx, b_idx, c_idx = tri
         if a_idx < n and b_idx < n and c_idx < n:
             final_triangles.append(tri)
 
     # Build edge to triangles mapping for the maximal planar graph
-    edge_to_triangles = {}
+    edge_to_triangles: Dict[Tuple[int, int], List[Tuple[int, int, int]]] = {}
     for tri in final_triangles:
         a, b, c = tri
-        for edge in [
-            tuple(sorted((a, b))),
-            tuple(sorted((b, c))),
-            tuple(sorted((a, c))),
-        ]:
+        edges = [
+            (a, b) if a < b else (b, a),
+            (b, c) if b < c else (c, b),
+            (a, c) if a < c else (c, a),
+        ]
+        for edge in edges:
             if edge not in edge_to_triangles:
                 edge_to_triangles[edge] = []
             edge_to_triangles[edge].append(tri)
 
     # Build the dual graph of the maximal planar graph
-    triangle_to_id = {}
+    triangle_to_id: Dict[Tuple[int, int, int], int] = {}
     for i, tri in enumerate(final_triangles):
         triangle_to_id[tri] = i
 
@@ -494,7 +507,7 @@ def planar_(
         graph.add_vertex(i)
 
     # Add edges in the dual
-    dual_edges = []
+    dual_edges: List[Tuple[int, int, float]] = []
     for edge, tris in edge_to_triangles.items():
         if len(tris) == 2:
             tri1, tri2 = tris
@@ -506,14 +519,14 @@ def planar_(
 
     # Now, remove edges from the dual with probability remove_probability
     # First, collect all edges
-    edges_to_consider = []
+    edges_to_consider: List[Tuple[int, int, float]] = []
     for u in graph.graph:
         for v, w in graph.graph[u].items():
             if u < v:  # To avoid duplicates
                 edges_to_consider.append((u, v, w))
 
     # Remove edges with probability remove_probability
-    edges_to_remove = []
+    edges_to_remove: List[Tuple[int, int]] = []
     for u, v, w in edges_to_consider:
         if rng.random() < remove_probability:
             edges_to_remove.append((u, v))
@@ -527,7 +540,7 @@ def planar_(
 
     # Ensure the dual graph remains connected
     # Build adjacency list
-    adj = {vertex: set() for vertex in graph.graph}
+    adj: Dict[int, Set[int]] = {vertex: set() for vertex in graph.graph}
     for u in graph.graph:
         for v in graph.graph[u]:
             adj[u].add(v)
@@ -547,7 +560,7 @@ def planar_(
 
     # If not connected, add edges back until connected
     # We'll add edges from the original dual edges that were removed
-    while len(visited) != len(graph.graph) and len(graph.graph) > 0:
+    while len(graph.graph) > 0 and len(visited) != len(graph.graph):
         # Find unvisited vertices
         unvisited = [v for v in graph.graph.keys() if v not in visited]
         # For each unvisited vertex, find a path to connect it
@@ -780,7 +793,7 @@ def barabasi_albert_(
             node_list.extend([node_idx] * degree)
 
         # Select m distinct nodes to connect to
-        selected_nodes = set()
+        selected_nodes: Set[int] = set()
         attempts = 0
         max_attempts = m * 10  # Prevent infinite loops
 
@@ -922,14 +935,53 @@ try:
 
         return nx_graph
 
-    def colormap(nx_graph, coloring):
+    def colormap(nx_graph, coloring) -> List:
+        """
+        Create a color map for nodes based on a coloring dictionary.
+
+        Args:
+            nx_graph: A networkx graph
+            coloring: A dictionary mapping nodes to color indices (integers)
+                     If None or empty, returns a default color list
+
+        Returns:
+            List of colors for each node in the graph
+        """
         color_map = []
-        nodes = nx_graph.nodes()
-        cmap = plt.cm.Set2 if len(nodes) <= 50 else plt.cm.tab10
+        nodes = list(nx_graph.nodes())
+
+        # If coloring is None or empty, use a default color
+        if not coloring:
+            return ["lightgray"] * len(nodes)
+
+        # Get all unique color indices
+        unique_colors = set(coloring.values())
+        num_unique_colors = max(1, len(unique_colors))
+
+        # Choose appropriate colormap based on number of nodes
+        cmap = plt.cm.Set2 if len(nodes) <= 50 else plt.cm.tab10  # type: ignore
+
         for node in nodes:
-            color_idx = coloring.get(str(node), 0)
-            color = cmap(color_idx / max(1, len(set(coloring.values())) - 1))
+            # Get color index for this node, default to 0 if not found
+            color_idx = coloring.get(node, 0)
+            # Normalize to [0, 1] range
+            # Handle the case when there's only one unique color
+            if num_unique_colors == 1:
+                normalized_idx = 0.0
+            else:
+                # Map color_idx to [0, 1] range
+                # First, find the position of color_idx among sorted unique colors
+                sorted_colors = sorted(unique_colors)
+                # Find the index of color_idx in sorted_colors
+                try:
+                    idx_position = sorted_colors.index(color_idx)
+                    normalized_idx = idx_position / (num_unique_colors - 1)
+                except ValueError:
+                    # If color_idx is not in unique_colors (shouldn't happen with .get(node, 0))
+                    normalized_idx = 0.0
+            color = cmap(normalized_idx)
             color_map.append(color)
+
         return color_map
 
     def nx2ax(
@@ -939,8 +991,21 @@ try:
         show_weights: bool = True,
         pos=None,
         num_nodes_thresh=50,  # num of nodes to not use node labels, shrink nodes, ...
-        coloring=None,
+        coloring: Optional[Dict[Any, int]] = None,
     ):
+        """
+        Draw a networkx graph on a matplotlib axis.
+
+        Args:
+            nx_graph: The networkx graph to draw
+            ax: Matplotlib axis to draw on
+            seed: Random seed for layout generation
+            show_weights: Whether to display edge weights
+            pos: Precomputed node positions (if None, will use spring layout)
+            num_nodes_thresh: Threshold for node display options
+            coloring: Optional dictionary mapping nodes to color indices
+                     If provided, nodes will be colored according to these indices
+        """
         num_nodes = len(nx_graph.nodes())
 
         # Create a layout for the nodes if not provided
@@ -1004,231 +1069,212 @@ if __name__ == "__main__":
     parser.add_argument("-show", help="Toggle showing graphs", action="store_false")
     args = parser.parse_args()
 
-    # Test complete graph
-    print("Testing complete graph:")
-    graph = complete_(UndirectedGraph_(), n=8)
-    print(f"Complete graph K_8: {len(graph)} vertices, {len(graph.get_edges())} edges")
-    print(f"Expected edges for K_8: {8 * 7 // 2} (n*(n-1)/2)")
+    def create_and_print_graph(
+        graph_type: str, graph, expected_edges: Optional[int] = None
+    ) -> None:
+        """Helper to create and print graph statistics."""
+        print(f"\n{graph_type}:")
+        print(f"  Number of vertices: {len(graph)}")
+        print(f"  Number of edges: {len(graph.get_edges())}")
+        if expected_edges:
+            print(f"  Expected edges: {expected_edges}")
 
-    # Test 20-node graph
-    graph20 = twenty_(UndirectedGraph_())
-    print("\nGraph Information for 20-node graph:")
-    print(f"Number of vertices: {len(graph20)}")
-    print(f"Number of edges: {len(graph20.get_edges())}")
+    # Create and display various graph types
+    graphs = {}
 
-    # Test Erdos-Renyi graph
-    n_er = 30
-    p_er = 0.2
-    graph_er = erdos_renyi_(UndirectedGraph_(), n=n_er, p=p_er)
-    print(f"\nErdos-Renyi graph (n={n_er}, p={p_er}):")
-    print(f"Number of vertices: {len(graph_er)}")
-    print(f"Number of edges: {len(graph_er.get_edges())}")
-    expected_edges_er = int(p_er * n_er * (n_er - 1) / 2)
-    print(f"Expected average edges: {expected_edges_er}")
+    # Complete graph
+    graphs["complete"] = complete_(UndirectedGraph_(), n=8)
+    create_and_print_graph("Complete graph K_8", graphs["complete"], 8 * 7 // 2)
 
-    # Test Watts-Strogatz graph
+    # 20-node graph
+    graphs["twenty"] = twenty_(UndirectedGraph_())
+    create_and_print_graph("20-node graph", graphs["twenty"])
+
+    # Erdos-Renyi graph
+    n_er, p_er = 30, 0.2
+    graphs["erdos_renyi"] = erdos_renyi_(UndirectedGraph_(), n=n_er, p=p_er)
+    create_and_print_graph(
+        f"Erdos-Renyi graph (n={n_er}, p={p_er})",
+        graphs["erdos_renyi"],
+        int(p_er * n_er * (n_er - 1) / 2),
+    )
+
+    # Watts-Strogatz graph
     n_ws, k = 30, 6
-    graph_ws = watts_strogatz_(UndirectedGraph_(), n=n_ws, k=k)
-    print(f"\nWatts-Strogatz graph (n={n_ws}, k={k}):")
-    print(f"Number of vertices: {len(graph_ws)}")
-    print(f"Number of edges: {len(graph_ws.get_edges())}")
+    graphs["watts_strogatz"] = watts_strogatz_(UndirectedGraph_(), n=n_ws, k=k)
+    create_and_print_graph(
+        f"Watts-Strogatz graph (n={n_ws}, k={k})", graphs["watts_strogatz"]
+    )
 
-    # Test Barabási–Albert graph
+    # Barabási–Albert graph
     n_ba, m = 30, 3
-    graph_ba = barabasi_albert_(UndirectedGraph_(), n=n_ba, m=m)
-    print(f"\nBarabási–Albert graph (n={n_ba}, m={m}):")
-    print(f"Number of vertices: {len(graph_ba)}")
-    print(f"Number of edges: {len(graph_ba.get_edges())}")
+    graphs["barabasi_albert"] = barabasi_albert_(UndirectedGraph_(), n=n_ba, m=m)
+    create_and_print_graph(
+        f"Barabási–Albert graph (n={n_ba}, m={m})", graphs["barabasi_albert"]
+    )
 
-    # Test small planar graph (maximal planar, no edge removal)
+    # Small planar graph
     n_planar_small = 20
-    graph_planar_small = planar_(
+    graphs["planar_small"] = planar_(
         UndirectedGraph_(), n=n_planar_small, remove_probability=0.02
     )
-    print(
-        f"\nSmall planar graph (n={n_planar_small}: {len(graph_planar_small)} nodes, maximal):"
+    create_and_print_graph(
+        f"Small planar graph (n={n_planar_small})", graphs["planar_small"]
     )
-    print(f"Number of vertices: {len(graph_planar_small)}")
-    print(f"Number of edges: {len(graph_planar_small.get_edges())}")
 
-    # Test RB model graphs
-    n_rb = 30
-    p1_rb = 0.3
-    d_rb = 3
-
-    graph_rb = rb_graph_(UndirectedGraph_(), n=n_rb, d=d_rb, p1=p1_rb)
-    print(f"\nRB model graph (n={n_rb}, p1={p1_rb}):")
-    print(f"Number of vertices: {len(graph_rb)}")
-    print(f"Number of edges: {len(graph_rb.get_edges())}")
-    expected_edges = int(p1_rb * n_rb * (n_rb - 1) / 2)
-    print(f"Expected edges: {expected_edges}")
+    # RB model graphs
+    n_rb, p1_rb, d_rb = 30, 0.3, 3
+    graphs["rb_model"] = rb_graph_(UndirectedGraph_(), n=n_rb, d=d_rb, p1=p1_rb)
+    create_and_print_graph(
+        f"RB model graph (n={n_rb}, p1={p1_rb})",
+        graphs["rb_model"],
+        int(p1_rb * n_rb * (n_rb - 1) / 2),
+    )
 
     if args.show and HAS_NX_MPL:
-        # Figure 1: Complete graph and 20-node graph
-        fig1, axes1 = plt.subplots(1, 2, figsize=(16, 8))
 
-        # Complete graph
-        ax1 = axes1[0]
-        nx2ax(graph2nx(graph), ax1)
-        ax1.set_title("Complete Graph K_8")
-        ax1.axis("off")
+        def create_figure(
+            title: str,
+            subplot_configs: List[Dict[str, Any]],
+            figsize: Tuple[int, int] = (16, 8),
+        ) -> None:
+            """Helper to create a figure with multiple subplots."""
+            num_subplots = len(subplot_configs)
+            fig, axes = plt.subplots(1, num_subplots, figsize=figsize)
+            axes = axes if num_subplots > 1 else [axes]
 
-        # 20-node graph
-        ax2 = axes1[1]
-        nx2ax(graph2nx(graph20), ax2)
-        ax2.set_title("20-node Graph")
-        ax2.axis("off")
+            for ax, config in zip(axes, subplot_configs):
+                graph = config["graph"]
+                title_text = config["title"]
+                try_layout = config.get("try_planar", False)
 
-        plt.tight_layout()
-        plt.show()
+                g_nx = graph2nx(graph)
+                try:
+                    if try_layout:
+                        nx2ax(g_nx, ax, pos=nx.planar_layout(g_nx))
+                    else:
+                        nx2ax(g_nx, ax)
+                except:
+                    print(f"Note: {title_text} is not planar")
+                    nx2ax(g_nx, ax)
 
-        # Figure 2: Watts-Strogatz and Barabási–Albert graphs
-        fig2, axes2 = plt.subplots(1, 3, figsize=(18, 8))
+                ax.set_title(title_text)
+                ax.axis("off")
 
-        # Erdos-Renyi graph
-        graph_er = erdos_renyi_(UndirectedGraph_(), n=n_er, p=p_er)
-        ax3 = axes2[0]
-        nx2ax(graph2nx(graph_er), ax3)
-        ax3.set_title(f"Erdos-Renyi (n={n_er}, p={p_er})")
-        ax3.axis("off")
+            plt.tight_layout()
+            plt.show()
 
-        # Watts-Strogatz graph
-        ax3 = axes2[1]
-        nx2ax(graph2nx(graph_ws), ax3)
-        ax3.set_title(f"Watts-Strogatz (n={n_ws}, k={k})")
-        ax3.axis("off")
+        # Figure 1: Complete and 20-node graphs
+        create_figure(
+            "Basic Graphs",
+            [
+                {"graph": graphs["complete"], "title": "Complete Graph K_8"},
+                {"graph": graphs["twenty"], "title": "20-node Graph"},
+            ],
+        )
 
-        # Barabási–Albert graph
-        ax4 = axes2[2]
-        nx2ax(graph2nx(graph_ba), ax4)
-        ax4.set_title(f"Barabási–Albert (n={n_ba}, m={m})")
-        ax4.axis("off")
+        # Figure 2: Random graphs
+        create_figure(
+            "Random Graph Models",
+            [
+                {
+                    "graph": graphs["erdos_renyi"],
+                    "title": f"Erdos-Renyi (n={n_er}, p={p_er})",
+                },
+                {
+                    "graph": graphs["watts_strogatz"],
+                    "title": f"Watts-Strogatz (n={n_ws}, k={k})",
+                },
+                {
+                    "graph": graphs["barabasi_albert"],
+                    "title": f"Barabási–Albert (n={n_ba}, m={m})",
+                },
+            ],
+            figsize=(18, 8),
+        )
 
-        plt.tight_layout()
-        plt.show()
+        # Create large graphs for Figure 3
+        print("\nGenerating large graphs for visualization...")
 
-        # Figure 3: Large graphs without labels using nx2ax
-        print("\nGenerating large graph for Figure 3...\n")
+        large_graphs = {
+            "erdos_renyi_large": erdos_renyi_(UndirectedGraph_(), n=100, p=0.2),
+            "watts_strogatz_large": watts_strogatz_(UndirectedGraph_(), n=200, k=8),
+            "barabasi_albert_large": barabasi_albert_(UndirectedGraph_(), n=200, m=3),
+        }
 
-        # Create large Erdos-Renyi graph
-        n_er_large, p_large = 100, 0.2
-        graph_er_large = erdos_renyi_(UndirectedGraph_(), n=n_er_large, p=p_large)
-        print(f"Large Erdos-Renyi graph (n={n_er_large}, p={p_large}):")
-        print(f"Number of vertices: {len(graph_er_large)}")
-        print(f"Number of edges: {len(graph_er_large.get_edges())}")
+        for name, graph in large_graphs.items():
+            print(
+                f"{name.replace('_', ' ').title()}: {len(graph)} vertices, {len(graph.get_edges())} edges"
+            )
 
-        # Create large Watts-Strogatz graph
-        n_ws_large, k_large = 200, 8
-        graph_ws_large = watts_strogatz_(UndirectedGraph_(), n=n_ws_large, k=k_large)
-        print(f"\nLarge Watts-Strogatz graph (n={n_ws_large}, k={k_large}):")
-        print(f"Number of vertices: {len(graph_ws_large)}")
-        print(f"Number of edges: {len(graph_ws_large.get_edges())}")
+        # Figure 3: Large random graphs
+        create_figure(
+            "Large Random Graphs",
+            [
+                {
+                    "graph": large_graphs["erdos_renyi_large"],
+                    "title": "Large Erdos-Renyi (n=100, p=0.2)",
+                },
+                {
+                    "graph": large_graphs["watts_strogatz_large"],
+                    "title": "Large Watts-Strogatz (n=200, k=8)",
+                },
+                {
+                    "graph": large_graphs["barabasi_albert_large"],
+                    "title": "Large Barabási–Albert (n=200, m=3)",
+                },
+            ],
+            figsize=(18, 8),
+        )
 
-        # Create large Barabási–Albert graph
-        n_ba_large, m_large = 200, 3
-        graph_ba_large = barabasi_albert_(UndirectedGraph_(), n=n_ba_large, m=m_large)
-        print(f"\nLarge Barabási–Albert graph (n={n_ba_large}, m={m_large}):")
-        print(f"Number of vertices: {len(graph_ba_large)}")
-        print(f"Number of edges: {len(graph_ba_large.get_edges())}")
+        # Figure 4: Planar graphs
+        print("\nGenerating planar graphs for visualization...")
 
-        # Create Figure 3
-        fig3, axes3 = plt.subplots(1, 3, figsize=(18, 8))
-
-        # Large Erdos-Renyi graph
-        ax5 = axes3[0]
-        nx2ax(graph2nx(graph_er_large), ax5)
-        ax5.set_title(f"Large Erdos-Renyi (n={n_er_large}, p={p_large})")
-        ax5.axis("off")
-
-        # Large Watts-Strogatz graph
-        ax5 = axes3[1]
-        nx2ax(graph2nx(graph_ws_large), ax5)
-        ax5.set_title(f"Large Watts-Strogatz (n={n_ws_large}, k={k_large})")
-        ax5.axis("off")
-
-        # Large Barabási–Albert graph
-        ax6 = axes3[2]
-        nx2ax(graph2nx(graph_ba_large), ax6)
-        ax6.set_title(f"Large Barabási–Albert (n={n_ba_large}, m={m_large})")
-        ax6.axis("off")
-
-        plt.tight_layout()
-        plt.show()
-
-        # Figure 4: Planar graphs of different sizes
-        print("\nGenerating planar graph for Figure 4...\n")
-
-        # Create large planar graph with edge removal
         n_planar_large = 100
-        graph_planar_large = planar_(
+        planar_large = planar_(
             UndirectedGraph_(), n=n_planar_large, remove_probability=0.3
         )
         print(
-            f"Large planar graph (using n={n_planar_large}: {len(graph_planar_large)} nodes, with 30% edge removal):"
+            f"Large planar graph: {len(planar_large)} vertices, {len(planar_large.get_edges())} edges"
         )
-        print(f"Number of vertices: {len(graph_planar_large)}")
-        print(f"Number of edges: {len(graph_planar_large.get_edges())}")
 
-        fig4, axes4 = plt.subplots(1, 2, figsize=(16, 8))
-
-        # Small planar graph (with labels and weights)
-        ax7 = axes4[0]
-        g = graph2nx(graph_planar_small)
-        try:
-            nx2ax(g, ax7, pos=nx.planar_layout(g))
-        except:
-            print("not planar")
-            nx2ax(g, ax7)
-        ax7.set_title(f"Small Planar Graph (n={n_planar_small}, maximal)")
-        ax7.axis("off")
-
-        # Figure 5: Large planar graph (without labels)
-        ax8 = axes4[1]
-        g = graph2nx(graph_planar_large)
-        try:
-            nx2ax(g, ax8, pos=nx.planar_layout(g))
-        except:
-            print("not planar")
-            nx2ax(g, ax8)
-        ax8.set_title(
-            f"Large Planar Graph (using n={n_planar_large}, 30% edges removed)"
+        create_figure(
+            "Planar Graphs",
+            [
+                {
+                    "graph": graphs["planar_small"],
+                    "title": f"Small Planar (n={n_planar_small})",
+                    "try_planar": True,
+                },
+                {
+                    "graph": planar_large,
+                    "title": f"Large Planar (n={n_planar_large}, 30% edges removed)",
+                    "try_planar": True,
+                },
+            ],
         )
-        ax8.axis("off")
 
-        plt.tight_layout()
-        plt.show()
+        # Figure 5: RB model graphs
+        print("\nGenerating RB model graphs for visualization...")
 
-        # Create Figure 5: Visualize RB model graphs
-        print("\nGenerating RB model graph for Figure 5...\n")
-        fig5, axes5 = plt.subplots(1, 2, figsize=(16, 8))
-        ax9 = axes5[0]
-        g_nx = graph2nx(graph_rb)
-        try:
-            nx2ax(g_nx, ax9, pos=nx.planar_layout(g_nx))
-        except:
-            print("not planar")
-            nx2ax(g_nx, ax9)
-        ax9.set_title(f"RB Model Graph (n={n_rb}, p1={p1_rb})")
-        ax9.axis("off")
+        n_rb2, p1_rb2 = 60, 0.5
+        rb_model_2 = rb_graph_(UndirectedGraph_(), n=n_rb2, d=3, p1=p1_rb2)
+        print(
+            f"Second RB model graph: {len(rb_model_2)} vertices, {len(rb_model_2.get_edges())} edges"
+        )
 
-        ax10 = axes5[1]
-        n_rb = 60
-        p1_rb = 0.5
-        d_rb = 3
-        graph_rb_2 = rb_graph_(UndirectedGraph_(), n=n_rb, d=d_rb, p1=p1_rb)
-        print(f"RB model graph (n={n_rb}, p1={p1_rb}):")
-        print(f"Number of vertices: {len(graph_rb_2)}")
-        print(f"Number of edges: {len(graph_rb_2.get_edges())}")
-        expected_edges = int(p1_rb * n_rb * (n_rb - 1) / 2)
-        print(f"Expected edges: {expected_edges}")
-        g_nx = graph2nx(graph_rb_2)
-        try:
-            nx2ax(g_nx, ax10, pos=nx.planar_layout(g_nx))
-        except:
-            print("not planar")
-            nx2ax(g_nx, ax10)
-        ax10.set_title(f"RB Model Graph (n={n_rb}, p1={p1_rb})")
-        ax10.axis("off")
-
-        plt.tight_layout()
-        plt.show()
+        create_figure(
+            "RB Model Graphs",
+            [
+                {
+                    "graph": graphs["rb_model"],
+                    "title": f"RB Model (n={n_rb}, p1={p1_rb})",
+                    "try_planar": True,
+                },
+                {
+                    "graph": rb_model_2,
+                    "title": f"RB Model (n={n_rb2}, p1={p1_rb2})",
+                    "try_planar": True,
+                },
+            ],
+        )

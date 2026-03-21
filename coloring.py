@@ -40,29 +40,45 @@ class GraphColoringCSP(CSP[str, int]):
 
 
 if __name__ == "__main__":
+
     # Create and solve a hard-to-color Erdos-Renyi graph using CSP.
 
     import time, argparse
     from graph import UndirectedGraph_, erdos_renyi_, HAS_NX_MPL
 
-    parser = argparse.ArgumentParser(description="Demo coloring a graph.")
+    parser = argparse.ArgumentParser(
+        description="Demo coloring an Erdos-Renyi graph G(n,p).",
+        epilog="""
+    Erdos-Renyi graphs, G(n,p), transition from having small, disconnected components to
+    having a giant component of size O(n) when the average degree c = np is about 1, where n
+    is the number of nodes and p is the uniform probability that nodes are connected.
+
+    The 3-coloring threshold, where G(n,p) becomes 3-colorable is believe to be about
+    c = 4.69, above which the graph become non-3-colorable with high probability as the
+    space of valid 3-colorings splits into many separated clusters, making it hard for
+    local search or other simple algorithms to find a valid solution - so that, at lower
+    edge densities, below 4.96/n, finding a coloring can be difficult due to this clustering
+    transition or 'freezing transistion'.
+    """,
+    )
+    parser.add_argument("-n", help="number of vertices", type=int, default=80)
+    parser.add_argument("-c", help="colorability threshold", type=float, default=4.25)
     parser.add_argument("-show", help="Toggle showing graphs", action="store_false")
+    parser.add_argument("-fc", help="Use foward checking", action="store_false")
+    parser.add_argument("-seed", help="set random seed", type=int, default=1)
     args = parser.parse_args()
 
-    print(f"Creating hard-to-color Erdos-Renyi graph")
+    n = args.n
+    p = args.c / n
+    num_colors = 3
 
-    # Parameters for hard-to-color graph
-    NUM_NODES = 50
-    EDGE_PROBABILITY = 4.7 / NUM_NODES  # High edge density makes coloring harder
-    NUM_COLORS = 3
+    print(f"Vertices: {n}, Edge probability: {p:.4f} (c={args.c})")
 
-    print(f"Nodes: {NUM_NODES}, Edge probability: {EDGE_PROBABILITY:.4f}")
-
-    graph = erdos_renyi_(UndirectedGraph_(), n=NUM_NODES, p=EDGE_PROBABILITY)
+    graph = erdos_renyi_(UndirectedGraph_(), n=n, p=p, seed=args.seed)
 
     # Extract nodes and edges from the graph
-    nodes = [str(v) for v in graph.get_vertices()]
-    edges = [(str(e[0]), str(e[1])) for e in graph.get_edges()]
+    nodes = [v for v in graph.get_vertices()]
+    edges = [(e[0], e[1]) for e in graph.get_edges()]
 
     print(f"Graph has {len(nodes)} nodes and {len(edges)} edges")
     if len(nodes) > 0:
@@ -70,14 +86,18 @@ if __name__ == "__main__":
         print(f"Edge density: {len(edges) / max_possible_edges:.3f}")
 
     # Create and solve CSP
-    print("Finding coloring using CSP solver...")
+    print(f"Finding {num_colors}-coloring using CSP solver", end=" ")
+    if args.fc:
+        print("with forward checking.")
+    else:
+        print("without forward checking.")
 
     # Create CSP instance
-    csp = GraphColoringCSP(nodes, edges, NUM_COLORS)
+    csp = GraphColoringCSP(nodes, edges, num_colors)
 
     # Solve with forward checking for better performance
     start_solve_time = time.time()
-    coloring = csp.solve(use_forward_checking=True)
+    coloring = csp.solve(use_forward_checking=args.fc)
     end_solve_time = time.time()
 
     if coloring:
@@ -98,7 +118,7 @@ if __name__ == "__main__":
             for color in coloring.values():
                 color_counts[color] = color_counts.get(color, 0) + 1
 
-            print("\nColor distribution:")
+            print("Color distribution:")
             for color in sorted(color_counts.keys()):
                 print(
                     f"  Color {color}: {color_counts[color]} nodes ({color_counts[color]/len(nodes)*100:.1f}%)"

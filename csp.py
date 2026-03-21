@@ -27,10 +27,17 @@ class Constraint(Generic[V, D], ABC):
 class CSP(Generic[V, D]):
     """Base class for Constraint Satisfaction Problems."""
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """Initialize an empty CSP."""
         self.variables: List[V] = []
         self.domains: Dict[V, List[D]] = {}
-        self.constraints: Dict[V, List[Constraint[V, D]]] = {}
+        self.original_domains: Dict[V, List[D]] = {}
+        self.constraints: List[Constraint[V, D]] = (
+            []
+        )  # Changed from Dict[V, List[Constraint[V, D]]]
+        self.constraints_by_var: Dict[V, List[Constraint[V, D]]] = (
+            {}
+        )  # New: mapping for quick lookup
         self._current_assignment: Dict[V, D] = {}
         # Add backtracking counter
         self.backtrack_count: int = 0
@@ -39,18 +46,20 @@ class CSP(Generic[V, D]):
         """Add a variable with its domain."""
         self.variables.append(variable)
         self.domains[variable] = domain.copy()
-        self.constraints[variable] = []
+        self.original_domains[variable] = domain.copy()
+        # No need to initialize constraints_by_var here; it's done when adding constraints
 
     def add_constraint(self, constraint: Constraint[V, D]) -> None:
         """Add a constraint and connect it to relevant variables."""
+        self.constraints.append(constraint)
         for var in constraint.variables:
-            if var not in self.constraints:
-                self.constraints[var] = []
-            self.constraints[var].append(constraint)
+            if var not in self.constraints_by_var:
+                self.constraints_by_var[var] = []
+            self.constraints_by_var[var].append(constraint)
 
     def get_constraints_for_variable(self, variable: V) -> List[Constraint[V, D]]:
         """Get all constraints involving a specific variable."""
-        return self.constraints.get(variable, [])
+        return self.constraints_by_var.get(variable, [])
 
     def is_consistent(self, variable: V, value: D, assignment: Dict[V, D]) -> bool:
         """Check if assigning value to variable is consistent with all constraints."""
@@ -97,13 +106,15 @@ class CSP(Generic[V, D]):
         Forward checking: remove inconsistent values from future variables' domains.
         Returns False if any domain becomes empty.
         """
-        # This is a basic forward checking - override for more sophisticated versions
+        # Track which domains we modify for restoration
+        modified: Dict[V, List[D]] = {}
+
         for future_var in self.variables:
             if future_var in assignment:
                 continue
 
-            # Check if any value in future_var's domain is consistent
-            consistent_values = []
+            # Check which values are still consistent
+            consistent_values: List[D] = []
             for val in self.domains[future_var]:
                 temp_assignment = assignment.copy()
                 temp_assignment[future_var] = val
@@ -117,12 +128,17 @@ class CSP(Generic[V, D]):
                 if is_consistent:
                     consistent_values.append(val)
 
+            # If domain becomes empty, restore and return False
             if not consistent_values:
+                # Restore any domains we modified
+                for var, domain in modified.items():
+                    self.domains[var] = domain
                 return False
 
-            # In a real implementation, you'd need to restore domains during backtracking
-            # This simplified version doesn't handle restoration
-            self.domains[future_var] = consistent_values
+            # Store original domain if we're modifying it
+            if len(consistent_values) < len(self.domains[future_var]):
+                modified[future_var] = self.domains[future_var].copy()
+                self.domains[future_var] = consistent_values
 
         return True
 
@@ -147,7 +163,7 @@ class CSP(Generic[V, D]):
             return None
 
         # Save current domain state for restoration
-        saved_domains = None
+        saved_domains: Optional[Dict[V, List[D]]] = None
         if use_forward_checking:
             saved_domains = copy.deepcopy(self.domains)
 
@@ -157,7 +173,9 @@ class CSP(Generic[V, D]):
                 assignment[var] = value
 
                 # Apply forward checking if requested
-                if use_forward_checking:
+                if use_forward_checking and saved_domains is not None:
+                    # Make a copy for forward checking
+                    self.domains = copy.deepcopy(saved_domains)
                     if not self.forward_check(var, value, assignment):
                         # Restore domains and try next value
                         self.domains = saved_domains
@@ -173,7 +191,7 @@ class CSP(Generic[V, D]):
 
                 # Undo assignment and restore domains
                 del assignment[var]
-                if use_forward_checking and saved_domains:
+                if use_forward_checking and saved_domains is not None:
                     self.domains = saved_domains
                 # Increment backtrack counter (recursive call failed)
                 self.backtrack_count += 1
@@ -182,16 +200,25 @@ class CSP(Generic[V, D]):
         self.backtrack_count += 1
         return None
 
-    def get_all_solutions(self, limit: int = None) -> List[Dict[V, D]]:
+    def reset_domains(self) -> None:
+        """Reset domains to their original values."""
+        for var in self.variables:
+            self.domains[var] = self.original_domains[var].copy()
+
+    def get_all_solutions(self, limit: Optional[int] = None) -> List[Dict[V, D]]:
         """Find all solutions (or up to limit solutions)."""
-        self.__init__(self.n)  # resets order of self.domain[var] for all var
-        solutions = []
+        # Reset domains to original state before finding all solutions
+        self.reset_domains()
+        solutions: List[Dict[V, D]] = []
         self._find_all_solutions({}, solutions, limit)
         return solutions
 
     def _find_all_solutions(
-        self, assignment: Dict[V, D], solutions: List[Dict[V, D]], limit: int = None
-    ):
+        self,
+        assignment: Dict[V, D],
+        solutions: List[Dict[V, D]],
+        limit: Optional[int] = None,
+    ) -> None:
         """Helper method to find all solutions."""
         if limit is not None and len(solutions) >= limit:
             return

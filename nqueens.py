@@ -67,25 +67,38 @@ def show_solution(solution):
         print(line.rstrip())
 
 
-n = 8
-nqueens = NQueensCSP(n)
-solution = nqueens.solve(use_forward_checking=False)
+if __name__ == "__main__":
 
-# print an ascii chess board with queens positioned on it
-if solution is None:
-    print("No solution found")
-else:
-    if n <= 8:
-        print(solution)
-    print("backtracks: ", nqueens.get_backtrack_count())
-    if n <= 30:
-        show_solution(solution)
+    import time, argparse
 
-if n <= 8:
-    solutions = nqueens.get_all_solutions()
-    print("total number of solutions:", len(solutions))
-    for solution in solutions:
-        show_solution(solution)
-        q = input("quit? ")
-        if len(q) and q[0].lower() == "q":
-            break
+    parser = argparse.ArgumentParser(description="CSP solve a n-queens problem.")
+    parser.add_argument("-n", help="number of queens", type=int, default=8)
+    parser.add_argument("-fc", help="use foward checking", action="store_false")
+    parser.add_argument("-all", help="show all solutions", action="store_true")
+    args = parser.parse_args()
+
+    n = args.n
+    nqueens = NQueensCSP(n)
+    if args.fc:
+        print("using forward checking")
+    else:
+        print("no forward checking")
+    solution = nqueens.solve(use_forward_checking=args.fc)
+
+    # print an ascii chess board with queens positioned on it
+    if solution is None:
+        print("No solution found")
+    elif not args.all:
+        if n <= 8:
+            print(solution)
+        print("backtracks: ", nqueens.get_backtrack_count())
+        if n <= 70:
+            show_solution(solution)
+    else:
+        solutions = nqueens.get_all_solutions()
+        print("total number of solutions:", len(solutions))
+        for solution in solutions:
+            show_solution(solution)
+            q = input("quit? ").lower()
+            if len(q) and (q[0] == "q" or q[0] == "y"):
+                break
