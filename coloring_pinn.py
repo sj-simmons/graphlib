@@ -6,6 +6,7 @@ This script generates random ER graphs, trains a GNN per graph using a physics�
 loss, and reports the number of remaining conflicts (edges with same color).
 Zero conflicts indicates a valid 3‑coloring.
 """
+
 import random
 import numpy as np
 import torch
@@ -37,8 +38,8 @@ def er_graph_to_data(ugraph: UndirectedGraph_):
         - edge_index: directed edges (both directions) suitable for message passing.
         - edge_index_undir: unique undirected edges (src < dst) for conflict counting.
     """
-    dir_edges = []      # both (u,v) and (v,u)
-    undir_edges = []    # only one (u,v) with u < v
+    dir_edges = []  # both (u,v) and (v,u)
+    undir_edges = []  # only one (u,v) with u < v
     for u, neighbors in ugraph.graph.items():
         for v in neighbors:
             dir_edges.append([u, v])
@@ -60,8 +61,15 @@ class GNNConvDeep(nn.Module):
     before the final projection.  This lets the model use both
     local (early-layer) and global (late-layer) information.
     """
-    def __init__(self, num_features: int, hidden_dim: int, num_classes: int,
-                 num_layers: int = 4, dropout: float = 0.1):
+
+    def __init__(
+        self,
+        num_features: int,
+        hidden_dim: int,
+        num_classes: int,
+        num_layers: int = 4,
+        dropout: float = 0.1,
+    ):
         super().__init__()
         self.num_layers = num_layers
         self.dropout = dropout
@@ -71,12 +79,12 @@ class GNNConvDeep(nn.Module):
         self.bn_first = nn.BatchNorm1d(hidden_dim)
 
         # Intermediate layers with residual connections
-        self.conv_hidden = nn.ModuleList([
-            SAGEConv(hidden_dim, hidden_dim) for _ in range(num_layers - 1)
-        ])
-        self.bn_hidden = nn.ModuleList([
-            nn.BatchNorm1d(hidden_dim) for _ in range(num_layers - 1)
-        ])
+        self.conv_hidden = nn.ModuleList(
+            [SAGEConv(hidden_dim, hidden_dim) for _ in range(num_layers - 1)]
+        )
+        self.bn_hidden = nn.ModuleList(
+            [nn.BatchNorm1d(hidden_dim) for _ in range(num_layers - 1)]
+        )
 
         # JumpingKnowledge: project concatenated layer outputs to num_classes
         # All num_layers layers contribute a hidden_dim-sized representation
@@ -107,8 +115,9 @@ class GNNConvDeep(nn.Module):
         return x
 
 
-def loss_physics_with_confidence(probs, edge_index_undir, lambda_div=0.01, beta_entropy=0.01,
-                                 edge_weights=None):
+def loss_physics_with_confidence(
+    probs, edge_index_undir, lambda_div=0.01, beta_entropy=0.01, edge_weights=None
+):
     """
     Physics‑inspired loss with diversity and confidence regularization.
 
@@ -122,7 +131,7 @@ def loss_physics_with_confidence(probs, edge_index_undir, lambda_div=0.01, beta_
              + β * mean_node_entropy
     """
     src, dst = edge_index_undir
-    dot = torch.sum(probs[src] * probs[dst], dim=1)   # (E,)
+    dot = torch.sum(probs[src] * probs[dst], dim=1)  # (E,)
 
     if edge_weights is not None:
         loss_physics_term = (dot * edge_weights).sum() / edge_weights.sum()
@@ -141,7 +150,9 @@ def loss_physics_with_confidence(probs, edge_index_undir, lambda_div=0.01, beta_
     node_entropies = -torch.sum(probs * torch.log(probs + 1e-8), dim=1)
     loss_confidence = node_entropies.mean()
 
-    return loss_physics_term + lambda_div * loss_diversity + beta_entropy * loss_confidence
+    return (
+        loss_physics_term + lambda_div * loss_diversity + beta_entropy * loss_confidence
+    )
 
 
 def compute_edge_conflict_weights(probs, edge_index_undir):
@@ -175,69 +186,166 @@ def count_conflicts(coloring, edge_index_undir):
     return (coloring[src] == coloring[dst]).sum().item()
 
 
-def greedy_local_search(coloring, edge_index_undir, num_classes=3, max_iters=1000):
-    """
-    Greedy local search to fix remaining conflicts.
-
-    For each conflicting node, re-color it to the color that minimizes
-    conflicts with its neighbors.  Repeats until no conflicts remain
-    or max_iters is reached.
-
-    coloring : (N,) tensor of hard color assignments (0 … C‑1).
-    edge_index_undir : (2, E_undir) unique undirected edges (src < dst).
-    num_classes : number of available colors.
-    max_iters : maximum number of passes over conflicting nodes.
-
-    Returns (improved_coloring, final_conflicts).
-    """
-    coloring = coloring.clone()
-    num_nodes = coloring.size(0)
+def _build_adj(edge_index_undir, num_nodes):
+    """Build adjacency list from undirected edge index."""
     src, dst = edge_index_undir
-
-    # Build adjacency list from undirected edges
     adj = [[] for _ in range(num_nodes)]
     for i in range(src.size(0)):
         u, v = src[i].item(), dst[i].item()
         adj[u].append(v)
         adj[v].append(u)
+    return adj
 
-    for _ in range(max_iters):
-        # Find conflicting nodes
-        conflicts_mask = torch.zeros(num_nodes, dtype=torch.bool)
-        for i in range(src.size(0)):
-            u, v = src[i].item(), dst[i].item()
+
+def _find_conflicting_nodes(coloring, adj):
+    """Return list of nodes involved in at least one conflict."""
+    conflicting = []
+    for u in range(len(adj)):
+        for v in adj[u]:
             if coloring[u] == coloring[v]:
-                conflicts_mask[u] = True
-                conflicts_mask[v] = True
+                conflicting.append(u)
+                break
+    return conflicting
 
-        conflicting_nodes = torch.where(conflicts_mask)[0]
-        if len(conflicting_nodes) == 0:
-            break
 
-        # Shuffle to avoid deterministic cycles
-        perm = torch.randperm(len(conflicting_nodes))
-        conflicting_nodes = conflicting_nodes[perm]
+def _greedy_pass(coloring, adj, num_classes):
+    """One greedy pass: re-color each conflicting node to the least-conflicted color.
+    Returns True if any node was re-colored."""
+    conflicting = _find_conflicting_nodes(coloring, adj)
+    random.shuffle(conflicting)
+    improved = False
+    for node in conflicting:
+        current = coloring[node].item()
+        neighbor_counts = [0] * num_classes
+        for nb in adj[node]:
+            neighbor_counts[coloring[nb].item()] += 1
+        best = min(range(num_classes), key=lambda c: neighbor_counts[c])
+        if best != current:
+            coloring[node] = best
+            improved = True
+    return improved
 
-        improved = False
-        for node in conflicting_nodes:
-            node = node.item()
-            current_color = coloring[node].item()
 
-            # Count neighbor colors
-            neighbor_color_counts = [0] * num_classes
-            for nb in adj[node]:
-                neighbor_color_counts[coloring[nb].item()] += 1
+def _kempe_chain_swap(coloring, adj, node, color_a, color_b):
+    """Swap colors along the Kempe chain containing *node* for colors (a, b).
 
-            # Pick color with fewest neighbor conflicts
-            best_color = min(range(num_classes), key=lambda c: neighbor_color_counts[c])
-            if best_color != current_color:
-                coloring[node] = best_color
-                improved = True
+    A Kempe chain is the connected component of nodes colored *a* or *b*
+    that contains *node*.  Swapping a↔b within this component preserves
+    validity for all edges *except* possibly edges that were already
+    conflicting — so it can open up new greedy opportunities.
+    """
+    if coloring[node].item() not in (color_a, color_b):
+        return
+    visited = set()
+    stack = [node]
+    while stack:
+        n = stack.pop()
+        if n in visited:
+            continue
+        visited.add(n)
+        c = coloring[n].item()
+        if c == color_a:
+            coloring[n] = color_b
+        elif c == color_b:
+            coloring[n] = color_a
+        else:
+            continue
+        for nb in adj[n]:
+            if nb not in visited and coloring[nb].item() in (color_a, color_b):
+                stack.append(nb)
 
-        if not improved:
-            break
+
+def greedy_local_search(coloring, edge_index_undir, num_classes=3, max_iters=1000):
+    """
+    Robust local search combining greedy re-coloring, Kempe chain swaps,
+    and random perturbation to resolve remaining conflicts.
+
+    Strategy:
+      1. Greedy passes (fast, handles easy conflicts).
+      2. When greedy stalls, try Kempe chain swaps on conflicting nodes
+         — these restructure the coloring non-locally to create room.
+      3. If still stuck, randomly perturb a small neighbourhood around
+         a conflicting node and retry greedy.
+
+    coloring : (N,) tensor of hard color assignments (0 … C‑1).
+    edge_index_undir : (2, E_undir) unique undirected edges (src < dst).
+    num_classes : number of available colors.
+    max_iters : maximum number of outer iterations.
+
+    Returns (improved_coloring, final_conflicts).
+    """
+    coloring = coloring.clone()
+    num_nodes = coloring.size(0)
+    adj = _build_adj(edge_index_undir, num_nodes)
+
+    best_coloring = coloring.clone()
+    best_conflicts = count_conflicts(coloring, edge_index_undir)
+
+    for iteration in range(max_iters):
+        cur_conflicts = count_conflicts(coloring, edge_index_undir)
+        if cur_conflicts == 0:
+            return coloring, 0
+
+        # Track overall best
+        if cur_conflicts < best_conflicts:
+            best_conflicts = cur_conflicts
+            best_coloring = coloring.clone()
+
+        # Phase 1: greedy pass
+        if _greedy_pass(coloring, adj, num_classes):
+            continue  # greedy made progress, try another pass
+
+        # Phase 2: Kempe chain swaps on conflicting nodes
+        conflicting = _find_conflicting_nodes(coloring, adj)
+        if not conflicting:
+            return coloring, 0
+
+        kempe_helped = False
+        random.shuffle(conflicting)
+        for node in conflicting:
+            node_color = coloring[node].item()
+            # Try swapping node's color with each other color
+            other_colors = [c for c in range(num_classes) if c != node_color]
+            random.shuffle(other_colors)
+            for other_color in other_colors:
+                saved = coloring.clone()
+                _kempe_chain_swap(coloring, adj, node, node_color, other_color)
+                new_conflicts = count_conflicts(coloring, edge_index_undir)
+                if new_conflicts < cur_conflicts:
+                    kempe_helped = True
+                    break  # accept this swap
+                else:
+                    coloring = saved  # revert
+            if kempe_helped:
+                break
+
+        if kempe_helped:
+            continue
+
+        # Phase 3: random perturbation — re-color a neighbourhood to escape local minimum
+        node = random.choice(conflicting)
+        # Collect nodes within distance 2 of the conflicting node
+        perturb_set = set(adj[node])
+        perturb_set.add(node)
+        for nb in list(perturb_set):
+            perturb_set.update(adj[nb])
+
+        saved = coloring.clone()
+        for n in perturb_set:
+            coloring[n] = random.randint(0, num_classes - 1)
+
+        # Run a few greedy passes to clean up the perturbation
+        for _ in range(20):
+            if not _greedy_pass(coloring, adj, num_classes):
+                break
+
+        new_conflicts = count_conflicts(coloring, edge_index_undir)
+        if new_conflicts > cur_conflicts:
+            coloring = saved  # revert if perturbation made things worse
 
     final_conflicts = count_conflicts(coloring, edge_index_undir)
+    if best_conflicts < final_conflicts:
+        return best_coloring, best_conflicts
     return coloring, final_conflicts
 
 
@@ -252,14 +360,14 @@ def analyze_coloring(coloring, num_classes=3):
     entropy = -torch.sum(distribution * torch.log(distribution + 1e-8))
 
     return {
-        'num_used': num_used,
-        'counts': counts,
-        'distribution': distribution,
-        'entropy': entropy.item()
+        "num_used": num_used,
+        "counts": counts,
+        "distribution": distribution,
+        "entropy": entropy.item(),
     }
 
 
-def train_on_graph(data, num_classes=3, device='cpu', hypers=None):
+def train_on_graph(data, num_classes=3, device="cpu", hypers=None):
     """
     Train a GNN (with node embeddings) on a single graph.
 
@@ -269,32 +377,32 @@ def train_on_graph(data, num_classes=3, device='cpu', hypers=None):
     """
     if hypers is None:
         hypers = {
-            'dim_embedding': 128,
-            'hidden_dim': 128,
-            'num_layers': 5,
-            'dropout': 0.2,
-            'learning_rate': 5e-3,
-            'patience': 500,
-            'max_epochs': 20000,
-            'seed': 42,
-            'lambda_div': 0.02,
-            'beta_entropy': 0.05,
-            'temp_start': 2.0,
-            'temp_end': 0.1,
+            "dim_embedding": 128,
+            "hidden_dim": 128,
+            "num_layers": 5,
+            "dropout": 0.2,
+            "learning_rate": 5e-3,
+            "patience": 500,
+            "max_epochs": 20000,
+            "seed": 42,
+            "lambda_div": 0.02,
+            "beta_entropy": 0.05,
+            "temp_start": 2.0,
+            "temp_end": 0.1,
         }
 
-    set_seed(hypers['seed'])
+    set_seed(hypers["seed"])
 
     num_nodes = data.num_nodes
-    dim_embedding = hypers['dim_embedding']
-    hidden_dim = hypers['hidden_dim']
-    dropout = hypers['dropout']
-    lr = hypers['learning_rate']
-    patience = hypers['patience']
-    max_epochs = hypers['max_epochs']
-    lambda_div = hypers.get('lambda_div', 0.01)
-    temp_start = hypers.get('temp_start', 2.0)
-    temp_end = hypers.get('temp_end', 0.1)
+    dim_embedding = hypers["dim_embedding"]
+    hidden_dim = hypers["hidden_dim"]
+    dropout = hypers["dropout"]
+    lr = hypers["learning_rate"]
+    patience = hypers["patience"]
+    max_epochs = hypers["max_epochs"]
+    lambda_div = hypers.get("lambda_div", 0.01)
+    temp_start = hypers.get("temp_start", 2.0)
+    temp_end = hypers.get("temp_end", 0.1)
 
     # Model components
     embed = nn.Embedding(num_nodes, dim_embedding).to(device)
@@ -302,30 +410,28 @@ def train_on_graph(data, num_classes=3, device='cpu', hypers=None):
         dim_embedding,
         hidden_dim,
         num_classes,
-        num_layers=hypers.get('num_layers', 4),
-        dropout=dropout
+        num_layers=hypers.get("num_layers", 4),
+        dropout=dropout,
     ).to(device)
-    #if hasattr(torch, 'compile'):
+    # if hasattr(torch, 'compile'):
     #    model = torch.compile(model)
     optimizer = optim.AdamW(
-        list(model.parameters()) + list(embed.parameters()),
-        lr=lr,
-        weight_decay=1e-2
+        list(model.parameters()) + list(embed.parameters()), lr=lr, weight_decay=1e-2
     )
     # Cosine annealing with warm restarts: periodic LR spikes help escape local minima
-    restart_period = hypers.get('restart_period', max_epochs // 5)
+    restart_period = hypers.get("restart_period", max_epochs // 5)
     scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(
         optimizer, T_0=restart_period, T_mult=2, eta_min=1e-5
     )
 
     edge_index = data.edge_index.to(device)
     # Use undirected edges for conflict counting if they are stored
-    edge_index_undir = getattr(data, 'edge_index_undir', edge_index).to(device)
+    edge_index_undir = getattr(data, "edge_index_undir", edge_index).to(device)
 
-    best_loss = float('inf')
+    best_loss = float("inf")
     best_coloring = None
-    best_conflicts = num_nodes * 10   # large sentinel
-    cnt = 0                            # early‑stopping counter
+    best_conflicts = num_nodes * 10  # large sentinel
+    cnt = 0  # early‑stopping counter
     # Save best model state
     best_model_state = None
     best_embed_state = None
@@ -334,8 +440,8 @@ def train_on_graph(data, num_classes=3, device='cpu', hypers=None):
         model.train()
         optimizer.zero_grad()
 
-        inputs = embed.weight                          # (N, dim_embedding)
-        logits = model(inputs, edge_index)             # (N, num_classes)
+        inputs = embed.weight  # (N, dim_embedding)
+        logits = model(inputs, edge_index)  # (N, num_classes)
 
         # Temperature annealing: exponential decay from temp_start to temp_end
         progress = epoch / max(max_epochs - 1, 1)
@@ -345,9 +451,10 @@ def train_on_graph(data, num_classes=3, device='cpu', hypers=None):
         # Compute conflict-weighted edges: focus loss on high-conflict edges
         edge_weights = compute_edge_conflict_weights(probs, edge_index_undir)
         loss = loss_physics_with_confidence(
-            probs, edge_index_undir,
+            probs,
+            edge_index_undir,
             lambda_div=lambda_div,
-            beta_entropy=hypers.get('beta_entropy', 0.01),
+            beta_entropy=hypers.get("beta_entropy", 0.01),
             edge_weights=edge_weights,
         )
 
@@ -382,11 +489,13 @@ def train_on_graph(data, num_classes=3, device='cpu', hypers=None):
 
         if epoch % 100 == 0:
             analysis = analyze_coloring(coloring, num_classes=3)
-            print(f'    epoch {epoch:5d} | loss {loss.item():.4f} '
-                  f'| temp {temperature:.3f} '
-                  f'| colors used {analysis["num_used"]} '
-                  f'| entropy {analysis["entropy"]:.3f} '
-                  f'| conflicts {conflicts} ')
+            print(
+                f"    epoch {epoch:5d} | loss {loss.item():.4f} "
+                f"| temp {temperature:.3f} "
+                f'| colors used {analysis["num_used"]} '
+                f'| entropy {analysis["entropy"]:.3f} '
+                f"| conflicts {conflicts} "
+            )
 
     # Restore best model if found
     if best_model_state is not None and best_embed_state is not None:
@@ -400,25 +509,27 @@ def train_on_graph(data, num_classes=3, device='cpu', hypers=None):
             best_coloring, edge_undir_cpu, num_classes=num_classes
         )
         if improved_conflicts < best_conflicts:
-            print(f'    local search: {best_conflicts} -> {improved_conflicts} conflicts')
+            print(
+                f"    local search: {best_conflicts} -> {improved_conflicts} conflicts"
+            )
             best_coloring = improved_coloring
             best_conflicts = improved_conflicts
 
     return best_coloring, best_loss, best_conflicts, epoch
 
 
-def train_with_restarts(data, num_classes=3, device='cpu', hypers=None, num_restarts=5):
+def train_with_restarts(data, num_classes=3, device="cpu", hypers=None, num_restarts=5):
     """
     Run train_on_graph multiple times with different random seeds and keep the best result.
 
     Returns the same tuple as train_on_graph: (best_coloring, best_loss, best_conflicts, epochs_used)
     """
-    base_seed = hypers['seed'] if hypers else 42
-    overall_best = (None, float('inf'), float('inf'), 0)
+    base_seed = hypers["seed"] if hypers else 42
+    overall_best = (None, float("inf"), float("inf"), 0)
 
     for restart in range(num_restarts):
         restart_hypers = dict(hypers) if hypers else {}
-        restart_hypers['seed'] = base_seed + restart * 1000
+        restart_hypers["seed"] = base_seed + restart * 1000
 
         print(f'  [restart {restart+1}/{num_restarts}, seed={restart_hypers["seed"]}]')
         coloring, loss, conflicts, epochs = train_on_graph(
@@ -427,7 +538,7 @@ def train_with_restarts(data, num_classes=3, device='cpu', hypers=None, num_rest
 
         if conflicts < overall_best[2]:
             overall_best = (coloring, loss, conflicts, epochs)
-            print(f'  [restart {restart+1}] new best: {conflicts} conflicts')
+            print(f"  [restart {restart+1}] new best: {conflicts} conflicts")
 
         if conflicts == 0:
             break
@@ -435,89 +546,104 @@ def train_with_restarts(data, num_classes=3, device='cpu', hypers=None, num_rest
     return overall_best
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
 
     import argparse
+
     parser = argparse.ArgumentParser(
-        description='Train unsupervised GNN for 3‑coloring Erdős–Rényi graphs.'
+        description="Train unsupervised GNN for 3‑coloring Erdős–Rényi graphs."
     )
-    parser.add_argument('--num_nodes', type=int, default=80,
-                        help='Number of vertices in each generated graph')
-    parser.add_argument('--seed', type=int, default=42,
-                        help='Random seed for graph generation and training')
-    parser.add_argument('--device', type=str,
-                        default='cuda' if torch.cuda.is_available() else 'cpu',
-                        help='Device to run training')
+    parser.add_argument(
+        "--num_nodes",
+        type=int,
+        default=200,
+        help="Number of vertices in each generated graph",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Random seed for graph generation and training",
+    )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="cuda" if torch.cuda.is_available() else "cpu",
+        help="Device to run training",
+    )
     args = parser.parse_args()
 
     set_seed(args.seed)
     device = torch.device(args.device)
-    print(f'Using device: {device}')
-    print(f'Number of nodes per graph: {args.num_nodes}')
-    min_p, max_p = 4.0/args.num_nodes, 4.6/args.num_nodes
-    edge_probabilities = [min_p + (max_p - min_p) * i /10 for i in range(10)]
-    print(f'Edge probabilities: {[round(e,5) for e in edge_probabilities]}')
+    print(f"Using device: {device}")
+    print(f"Number of nodes per graph: {args.num_nodes}")
+    min_p, max_p = 4.0 / args.num_nodes, 4.6 / args.num_nodes
+    edge_probabilities = [min_p + (max_p - min_p) * i / 10 for i in range(10)]
+    print(f"Edge probabilities: {[round(e,5) for e in edge_probabilities]}")
 
     hypers = {
-        'dim_embedding': 128,          # Increased for richer representations
-        'hidden_dim': 128,             # Increased capacity
-        'num_layers': 6,               # Reduced: JumpingKnowledge compensates for fewer layers
-        'dropout': 0.2,                # Slightly higher dropout for regularization
-        'learning_rate': 5e-3,         # Higher learning rate
-        'patience': 500,               # More patience for sparse graphs
-        'max_epochs': 15000,           # More epochs
-        'seed': args.seed,
-        'lambda_div': 0.02,            # Increased diversity weight
-        'beta_entropy': 0.05,          # Confidence regularization weight
-        'temp_start': 2.0,             # Initial softmax temperature (exploratory)
-        'temp_end': 0.1,               # Final softmax temperature (committed)
-        'restart_period': 3000,        # Warm restart period for LR scheduler
+        "dim_embedding": 128,  # Increased for richer representations
+        "hidden_dim": 128,  # Increased capacity
+        "num_layers": 6,  # Reduced: JumpingKnowledge compensates for fewer layers
+        "dropout": 0.2,  # Slightly higher dropout for regularization
+        "learning_rate": 5e-3,  # Higher learning rate
+        "patience": 500,  # More patience for sparse graphs
+        "max_epochs": 15000,  # More epochs
+        "seed": args.seed,
+        "lambda_div": 0.02,  # Increased diversity weight
+        "beta_entropy": 0.05,  # Confidence regularization weight
+        "temp_start": 2.0,  # Initial softmax temperature (exploratory)
+        "temp_end": 0.1,  # Final softmax temperature (committed)
+        "restart_period": 3000,  # Warm restart period for LR scheduler
     }
-    num_restarts = 3                   # Number of random restarts per graph
+    num_restarts = 3  # Number of random restarts per graph
 
     results = []
     for p in edge_probabilities:
-        print(f'=== p = {p:.3f} ===')
+        print(f"=== p = {p:.3f} ===")
         # Generate ER graph (weights are irrelevant, set to constant 1)
         ugraph = UndirectedGraph_()
-        erdos_renyi_(
-            ugraph,
-            n=args.num_nodes,
-            p=p,
-            weight_range=(1, 1),
-            seed=args.seed
-        )
+        erdos_renyi_(ugraph, n=args.num_nodes, p=p, weight_range=(1, 1), seed=args.seed)
         data = er_graph_to_data(ugraph)
         data = data.to(device)
-        print(f'  Graph has {data.num_nodes} nodes, '
-              f'{data.edge_index_undir.size(1)} undirected edges')
+        print(
+            f"  Graph has {data.num_nodes} nodes, "
+            f"{data.edge_index_undir.size(1)} undirected edges"
+        )
 
         t_start = time.time()
         coloring, loss, conflicts, epochs = train_with_restarts(
-            data, num_classes=3, device=device, hypers=hypers,
+            data,
+            num_classes=3,
+            device=device,
+            hypers=hypers,
             num_restarts=num_restarts,
         )
         t_elapsed = time.time() - t_start
 
         # Analyze the best coloring
         analysis = analyze_coloring(coloring, num_classes=3)
-        print(f'  Result: conflicts = {conflicts}, '
-              f'time = {t_elapsed:.2f}s, epochs = {epochs}')
-        print(f'  Color distribution: {[round(x,2) for x in analysis["distribution"].tolist()]}, '
-              f'Colors used: {analysis["num_used"]}, Entropy: {analysis["entropy"]:.3f}\n')
+        print(
+            f"  Result: conflicts = {conflicts}, "
+            f"time = {t_elapsed:.2f}s, epochs = {epochs}"
+        )
+        print(
+            f'  Color distribution: {[round(x,2) for x in analysis["distribution"].tolist()]}, '
+            f'Colors used: {analysis["num_used"]}, Entropy: {analysis["entropy"]:.3f}\n'
+        )
         results.append((p, conflicts, epochs, t_elapsed, analysis))
 
     # Summary table
-    print('\n' + '='*70)
-    print('Summary')
-    print('='*70)
-    print('p\tconflicts\tepochs\ttime (s)\tcolors used\tentropy')
+    print("\n" + "=" * 70)
+    print("Summary")
+    print("=" * 70)
+    print("p\tconflicts\tepochs\ttime (s)\tcolors used\tentropy")
     for p, c, e, t, analysis in results:
-        print(f'{p:.3f}\t{c}\t\t{e}\t{t:.2f}\t\t{analysis["num_used"]}\t\t{analysis["entropy"]:.3f}')
-    print('='*70)
+        print(
+            f'{p:.3f}\t{c}\t\t{e}\t{t:.2f}\t\t{analysis["num_used"]}\t\t{analysis["entropy"]:.3f}'
+        )
+    print("=" * 70)
 
     # Count successful colorings
     success_count = sum(1 for _, c, _, _, _ in results if c == 0)
-    print(f'\nSuccessful 3-colorings: {success_count}/{len(results)}')
-
-
+    print(f"\nSuccessful 3-colorings: {success_count}/{len(results)}")
