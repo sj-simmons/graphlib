@@ -12,7 +12,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torch_geometric.nn import GCNConv
+from torch_geometric.nn import GCNConv, SAGEConv
 from torch_geometric.data import Data
 import time
 import sys
@@ -53,63 +53,81 @@ def er_graph_to_data(ugraph: UndirectedGraph_):
 
 
 class GNNConvDeep(nn.Module):
-    """Deeper GCN with residual connections for graph coloring."""
+    """GNN with JumpingKnowledge to combat oversmoothing.
+
+    Uses SAGEConv layers with residual connections and concatenates
+    representations from all layers (JumpingKnowledge "cat" mode)
+    before the final projection.  This lets the model use both
+    local (early-layer) and global (late-layer) information.
+    """
     def __init__(self, num_features: int, hidden_dim: int, num_classes: int,
                  num_layers: int = 4, dropout: float = 0.1):
         super().__init__()
         self.num_layers = num_layers
         self.dropout = dropout
 
-        # First layer
-        self.conv_first = GCNConv(num_features, hidden_dim)
+        # First layer: project input to hidden_dim
+        self.conv_first = SAGEConv(num_features, hidden_dim)
+        self.bn_first = nn.BatchNorm1d(hidden_dim)
 
         # Intermediate layers with residual connections
         self.conv_hidden = nn.ModuleList([
-            GCNConv(hidden_dim, hidden_dim) for _ in range(num_layers - 2)
+            SAGEConv(hidden_dim, hidden_dim) for _ in range(num_layers - 1)
         ])
-
-        # Last layer
-        self.conv_last = GCNConv(hidden_dim, num_classes)
-
-        # Batch normalization layers
-        self.bn_layers = nn.ModuleList([
+        self.bn_hidden = nn.ModuleList([
             nn.BatchNorm1d(hidden_dim) for _ in range(num_layers - 1)
         ])
 
+        # JumpingKnowledge: project concatenated layer outputs to num_classes
+        # All num_layers layers contribute a hidden_dim-sized representation
+        self.jk_linear = nn.Linear(hidden_dim * num_layers, num_classes)
+
     def forward(self, x, edge_index):
+        layer_outputs = []
+
         # First layer
         x = self.conv_first(x, edge_index)
-        x = self.bn_layers[0](x)
+        x = self.bn_first(x)
         x = F.relu(x)
         x = F.dropout(x, p=self.dropout, training=self.training)
+        layer_outputs.append(x)
 
         # Hidden layers with residual connections
-        for i in range(self.num_layers - 2):
+        for i in range(self.num_layers - 1):
             residual = x
             x = self.conv_hidden[i](x, edge_index)
-            x = self.bn_layers[i + 1](x)
-            x = F.relu(x + residual)  # Residual connection
+            x = self.bn_hidden[i](x)
+            x = F.relu(x + residual)
             x = F.dropout(x, p=self.dropout, training=self.training)
+            layer_outputs.append(x)
 
-        # Last layer
-        x = self.conv_last(x, edge_index)
+        # JumpingKnowledge: concatenate all layer representations
+        x = torch.cat(layer_outputs, dim=1)
+        x = self.jk_linear(x)
         return x
 
 
-def loss_physics_with_confidence(probs, edge_index_undir, lambda_div=0.01, beta_entropy=0.01):
+def loss_physics_with_confidence(probs, edge_index_undir, lambda_div=0.01, beta_entropy=0.01,
+                                 edge_weights=None):
     """
     Physics‑inspired loss with diversity and confidence regularization.
 
     probs : (N, C) tensor of soft color assignments.
     edge_index_undir : (2, E) unique undirected edges (src < dst).
+    edge_weights : optional (E,) tensor of per-edge weights.  When provided,
+        high-conflict edges contribute more to the physics loss.
 
-    Returns L = Σ_{i,j∈E} (probs_i · probs_j) / E
+    Returns L = Σ_{i,j∈E} w_ij (probs_i · probs_j) / Σ w_ij
              + λ * KL(avg_probs || uniform)
              + β * mean_node_entropy
     """
     src, dst = edge_index_undir
     dot = torch.sum(probs[src] * probs[dst], dim=1)   # (E,)
-    loss_physics_term = dot.sum() / edge_index_undir.size(1)
+
+    if edge_weights is not None:
+        loss_physics_term = (dot * edge_weights).sum() / edge_weights.sum()
+    else:
+        loss_physics_term = dot.sum() / edge_index_undir.size(1)
 
     # Diversity regularization: encourage using all colors
     color_distribution = probs.mean(dim=0)  # (C,)
@@ -126,6 +144,26 @@ def loss_physics_with_confidence(probs, edge_index_undir, lambda_div=0.01, beta_
     return loss_physics_term + lambda_div * loss_diversity + beta_entropy * loss_confidence
 
 
+def compute_edge_conflict_weights(probs, edge_index_undir):
+    """
+    Compute per-edge weights based on how conflicted each edge is.
+
+    Edges whose endpoints have similar soft color assignments get higher
+    weight so the loss focuses optimization on the hardest spots.
+
+    probs : (N, C) soft color assignments.
+    edge_index_undir : (2, E) unique undirected edges.
+
+    Returns (E,) tensor of weights in [1, 2].
+    """
+    with torch.no_grad():
+        src, dst = edge_index_undir
+        similarity = torch.sum(probs[src] * probs[dst], dim=1)  # (E,)
+        # Map similarity [0, 1] -> weight [1, 2]: more similar = higher weight
+        weights = 1.0 + similarity
+    return weights
+
+
 def count_conflicts(coloring, edge_index_undir):
     """
     Number of edges whose endpoints share the same color.
@@ -135,6 +173,73 @@ def count_conflicts(coloring, edge_index_undir):
     """
     src, dst = edge_index_undir
     return (coloring[src] == coloring[dst]).sum().item()
+
+
+def greedy_local_search(coloring, edge_index_undir, num_classes=3, max_iters=1000):
+    """
+    Greedy local search to fix remaining conflicts.
+
+    For each conflicting node, re-color it to the color that minimizes
+    conflicts with its neighbors.  Repeats until no conflicts remain
+    or max_iters is reached.
+
+    coloring : (N,) tensor of hard color assignments (0 … C‑1).
+    edge_index_undir : (2, E_undir) unique undirected edges (src < dst).
+    num_classes : number of available colors.
+    max_iters : maximum number of passes over conflicting nodes.
+
+    Returns (improved_coloring, final_conflicts).
+    """
+    coloring = coloring.clone()
+    num_nodes = coloring.size(0)
+    src, dst = edge_index_undir
+
+    # Build adjacency list from undirected edges
+    adj = [[] for _ in range(num_nodes)]
+    for i in range(src.size(0)):
+        u, v = src[i].item(), dst[i].item()
+        adj[u].append(v)
+        adj[v].append(u)
+
+    for _ in range(max_iters):
+        # Find conflicting nodes
+        conflicts_mask = torch.zeros(num_nodes, dtype=torch.bool)
+        for i in range(src.size(0)):
+            u, v = src[i].item(), dst[i].item()
+            if coloring[u] == coloring[v]:
+                conflicts_mask[u] = True
+                conflicts_mask[v] = True
+
+        conflicting_nodes = torch.where(conflicts_mask)[0]
+        if len(conflicting_nodes) == 0:
+            break
+
+        # Shuffle to avoid deterministic cycles
+        perm = torch.randperm(len(conflicting_nodes))
+        conflicting_nodes = conflicting_nodes[perm]
+
+        improved = False
+        for node in conflicting_nodes:
+            node = node.item()
+            current_color = coloring[node].item()
+
+            # Count neighbor colors
+            neighbor_color_counts = [0] * num_classes
+            for nb in adj[node]:
+                neighbor_color_counts[coloring[nb].item()] += 1
+
+            # Pick color with fewest neighbor conflicts
+            best_color = min(range(num_classes), key=lambda c: neighbor_color_counts[c])
+            if best_color != current_color:
+                coloring[node] = best_color
+                improved = True
+
+        if not improved:
+            break
+
+    final_conflicts = count_conflicts(coloring, edge_index_undir)
+    return coloring, final_conflicts
+
 
 def analyze_coloring(coloring, num_classes=3):
     """
@@ -174,6 +279,8 @@ def train_on_graph(data, num_classes=3, device='cpu', hypers=None):
             'seed': 42,
             'lambda_div': 0.02,
             'beta_entropy': 0.05,
+            'temp_start': 2.0,
+            'temp_end': 0.1,
         }
 
     set_seed(hypers['seed'])
@@ -186,6 +293,8 @@ def train_on_graph(data, num_classes=3, device='cpu', hypers=None):
     patience = hypers['patience']
     max_epochs = hypers['max_epochs']
     lambda_div = hypers.get('lambda_div', 0.01)
+    temp_start = hypers.get('temp_start', 2.0)
+    temp_end = hypers.get('temp_end', 0.1)
 
     # Model components
     embed = nn.Embedding(num_nodes, dim_embedding).to(device)
@@ -203,9 +312,10 @@ def train_on_graph(data, num_classes=3, device='cpu', hypers=None):
         lr=lr,
         weight_decay=1e-2
     )
-    # More gradual learning rate scheduler
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, T_max=max_epochs, eta_min=1e-5
+    # Cosine annealing with warm restarts: periodic LR spikes help escape local minima
+    restart_period = hypers.get('restart_period', max_epochs // 5)
+    scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(
+        optimizer, T_0=restart_period, T_mult=2, eta_min=1e-5
     )
 
     edge_index = data.edge_index.to(device)
@@ -226,11 +336,19 @@ def train_on_graph(data, num_classes=3, device='cpu', hypers=None):
 
         inputs = embed.weight                          # (N, dim_embedding)
         logits = model(inputs, edge_index)             # (N, num_classes)
-        probs = F.softmax(logits, dim=1)
+
+        # Temperature annealing: exponential decay from temp_start to temp_end
+        progress = epoch / max(max_epochs - 1, 1)
+        temperature = temp_start * (temp_end / temp_start) ** progress
+        probs = F.softmax(logits / temperature, dim=1)
+
+        # Compute conflict-weighted edges: focus loss on high-conflict edges
+        edge_weights = compute_edge_conflict_weights(probs, edge_index_undir)
         loss = loss_physics_with_confidence(
             probs, edge_index_undir,
             lambda_div=lambda_div,
-            beta_entropy=hypers.get('beta_entropy', 0.01)
+            beta_entropy=hypers.get('beta_entropy', 0.01),
+            edge_weights=edge_weights,
         )
 
         # Track hard assignments (no gradients needed)
@@ -265,6 +383,7 @@ def train_on_graph(data, num_classes=3, device='cpu', hypers=None):
         if epoch % 100 == 0:
             analysis = analyze_coloring(coloring, num_classes=3)
             print(f'    epoch {epoch:5d} | loss {loss.item():.4f} '
+                  f'| temp {temperature:.3f} '
                   f'| colors used {analysis["num_used"]} '
                   f'| entropy {analysis["entropy"]:.3f} '
                   f'| conflicts {conflicts} ')
@@ -274,7 +393,46 @@ def train_on_graph(data, num_classes=3, device='cpu', hypers=None):
         model.load_state_dict(best_model_state)
         embed.load_state_dict(best_embed_state)
 
+    # Greedy local search post-processing to fix remaining conflicts
+    if best_conflicts > 0 and best_coloring is not None:
+        edge_undir_cpu = edge_index_undir.cpu()
+        improved_coloring, improved_conflicts = greedy_local_search(
+            best_coloring, edge_undir_cpu, num_classes=num_classes
+        )
+        if improved_conflicts < best_conflicts:
+            print(f'    local search: {best_conflicts} -> {improved_conflicts} conflicts')
+            best_coloring = improved_coloring
+            best_conflicts = improved_conflicts
+
     return best_coloring, best_loss, best_conflicts, epoch
+
+
+def train_with_restarts(data, num_classes=3, device='cpu', hypers=None, num_restarts=5):
+    """
+    Run train_on_graph multiple times with different random seeds and keep the best result.
+
+    Returns the same tuple as train_on_graph: (best_coloring, best_loss, best_conflicts, epochs_used)
+    """
+    base_seed = hypers['seed'] if hypers else 42
+    overall_best = (None, float('inf'), float('inf'), 0)
+
+    for restart in range(num_restarts):
+        restart_hypers = dict(hypers) if hypers else {}
+        restart_hypers['seed'] = base_seed + restart * 1000
+
+        print(f'  [restart {restart+1}/{num_restarts}, seed={restart_hypers["seed"]}]')
+        coloring, loss, conflicts, epochs = train_on_graph(
+            data, num_classes=num_classes, device=device, hypers=restart_hypers
+        )
+
+        if conflicts < overall_best[2]:
+            overall_best = (coloring, loss, conflicts, epochs)
+            print(f'  [restart {restart+1}] new best: {conflicts} conflicts')
+
+        if conflicts == 0:
+            break
+
+    return overall_best
 
 
 if __name__ == '__main__':
@@ -303,15 +461,19 @@ if __name__ == '__main__':
     hypers = {
         'dim_embedding': 128,          # Increased for richer representations
         'hidden_dim': 128,             # Increased capacity
-        'num_layers': 14,              # Deeper network for larger receptive field
+        'num_layers': 6,               # Reduced: JumpingKnowledge compensates for fewer layers
         'dropout': 0.2,                # Slightly higher dropout for regularization
         'learning_rate': 5e-3,         # Higher learning rate
-        'patience': 3000,              # More patience for sparse graphs
+        'patience': 500,               # More patience for sparse graphs
         'max_epochs': 15000,           # More epochs
         'seed': args.seed,
         'lambda_div': 0.02,            # Increased diversity weight
         'beta_entropy': 0.05,          # Confidence regularization weight
+        'temp_start': 2.0,             # Initial softmax temperature (exploratory)
+        'temp_end': 0.1,               # Final softmax temperature (committed)
+        'restart_period': 3000,        # Warm restart period for LR scheduler
     }
+    num_restarts = 3                   # Number of random restarts per graph
 
     results = []
     for p in edge_probabilities:
@@ -331,8 +493,9 @@ if __name__ == '__main__':
               f'{data.edge_index_undir.size(1)} undirected edges')
 
         t_start = time.time()
-        coloring, loss, conflicts, epochs = train_on_graph(
-            data, num_classes=3, device=device, hypers=hypers
+        coloring, loss, conflicts, epochs = train_with_restarts(
+            data, num_classes=3, device=device, hypers=hypers,
+            num_restarts=num_restarts,
         )
         t_elapsed = time.time() - t_start
 
