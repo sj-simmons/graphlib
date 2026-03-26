@@ -289,8 +289,17 @@ class GraphColoringDataset:
 
 
 class GNNColorPredictor(nn.Module):
-    """
-    GNN model for predicting node colors in graph coloring problems.
+    """Recurrent message-passing GNN for graph coloring.
+
+    A single GNN layer is applied *num_iterations* times with shared weights
+    and residual connections — like running belief propagation.
+
+    Each node receives random features concatenated to its structural features.
+    This is critical: without random features, structurally equivalent nodes
+    (e.g. both endpoints of an edge in a regular graph) get identical
+    embeddings after message passing and can never be assigned different
+    colors.  Fresh random features each forward pass also act as exploration
+    during training; at inference we run multiple trials and keep the best.
     """
 
     def __init__(
@@ -298,128 +307,51 @@ class GNNColorPredictor(nn.Module):
         input_dim: int = 5,
         hidden_dim: int = 64,
         output_dim: int = 3,
-        num_layers: int = 3,
+        num_iterations: int = 8,
         gnn_type: str = "gcn",
-        dropout: float = 0.2,
+        dropout: float = 0.1,
+        random_dim: int = 16,
     ):
-        """
-        Initialize the GNN model.
+        super().__init__()
 
-        Args:
-            input_dim: Dimension of input node features
-            hidden_dim: Dimension of hidden layers
-            output_dim: Number of colors (output dimension)
-            num_layers: Number of GNN layers
-            gnn_type: Type of GNN layer ('gcn', 'gat', or 'sage')
-            dropout: Dropout rate
-        """
-        super(GNNColorPredictor, self).__init__()
-
-        self.input_dim = input_dim
-        self.hidden_dim = hidden_dim
-        self.output_dim = output_dim
-        self.num_layers = num_layers
-        self.gnn_type = gnn_type
+        self.num_iterations = num_iterations
         self.dropout = dropout
+        self.random_dim = random_dim
 
-        # Graph convolutional layers
-        self.convs = nn.ModuleList()
+        # +random_dim for the per-node random features
+        self.input_proj = nn.Linear(input_dim + random_dim, hidden_dim)
 
-        # First layer
-        if gnn_type == "gcn":
-            self.convs.append(GCNConv(input_dim, hidden_dim))
-        elif gnn_type == "gat":
-            self.convs.append(GATConv(input_dim, hidden_dim))
-        elif gnn_type == "sage":
-            self.convs.append(SAGEConv(input_dim, hidden_dim))
-        else:
-            raise ValueError(f"Unknown GNN type: {gnn_type}")
+        # Single GNN layer, applied recurrently
+        GNNLayer = {"gcn": GCNConv, "gat": GATConv, "sage": SAGEConv}[gnn_type]
+        self.conv = GNNLayer(hidden_dim, hidden_dim)
+        self.norm = nn.LayerNorm(hidden_dim)
 
-        # Middle layers
-        for _ in range(num_layers - 2):
-            if gnn_type == "gcn":
-                self.convs.append(GCNConv(hidden_dim, hidden_dim))
-            elif gnn_type == "gat":
-                self.convs.append(GATConv(hidden_dim, hidden_dim))
-            elif gnn_type == "sage":
-                self.convs.append(SAGEConv(hidden_dim, hidden_dim))
-
-        # Last layer
-        if gnn_type == "gcn":
-            self.convs.append(GCNConv(hidden_dim, hidden_dim))
-        elif gnn_type == "gat":
-            self.convs.append(GATConv(hidden_dim, hidden_dim))
-        elif gnn_type == "sage":
-            self.convs.append(SAGEConv(hidden_dim, hidden_dim))
-
-        # Graph-level pooling and MLP for final prediction
-        self.graph_mlp = nn.Sequential(
-            nn.Linear(hidden_dim + 2, hidden_dim),  # +2 for graph features
-            nn.ReLU(),
-            nn.Dropout(dropout),
+        # Color prediction head
+        self.head = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
             nn.Dropout(dropout),
-        )
-
-        # Final classification layer
-        self.fc = nn.Linear(
-            hidden_dim * 2, output_dim
-        )  # *2 for node and graph features
-
-        # Batch normalization
-        self.bns = nn.ModuleList(
-            [nn.BatchNorm1d(hidden_dim) for _ in range(num_layers)]
+            nn.Linear(hidden_dim, output_dim),
         )
 
     def forward(self, data):
-        """
-        Forward pass of the GNN.
+        x, edge_index = data.x, data.edge_index
 
-        Args:
-            data: PyG Data object with x, edge_index, batch
+        # Concatenate fresh random features to break node symmetry
+        rand_feat = torch.randn(x.size(0), self.random_dim, device=x.device)
+        x = torch.cat([x, rand_feat], dim=1)
 
-        Returns:
-            Node color predictions
-        """
-        x, edge_index, batch = data.x, data.edge_index, data.batch
+        h = F.relu(self.input_proj(x))
 
-        # Apply GNN layers
-        for i, conv in enumerate(self.convs):
-            x = conv(x, edge_index)
-            x = self.bns[i](x) if i < len(self.bns) else x
-            x = F.relu(x)
-            x = F.dropout(x, p=self.dropout, training=self.training)
+        # Recurrent message passing with residual connections
+        for _ in range(self.num_iterations):
+            h_new = self.conv(h, edge_index)
+            h_new = self.norm(h_new)
+            h_new = F.relu(h_new)
+            h_new = F.dropout(h_new, p=self.dropout, training=self.training)
+            h = h + h_new  # residual — keeps gradient path short
 
-        # Get graph-level representation
-        graph_embedding = global_mean_pool(x, batch)
-
-        # Handle graph features - they need to be collected from the batch
-        # Since graph_features is not automatically batched by PyG, we need to handle it differently
-        # We'll check if graph_features exists and has the right shape
-        if hasattr(data, "graph_features"):
-            # For batched data, graph_features should be stacked
-            # If it's a single graph, it will be 1D, so unsqueeze it
-            graph_features = data.graph_features
-            if graph_features.dim() == 1:
-                graph_features = graph_features.unsqueeze(0)
-            # Ensure we have the right number of graph features
-            if graph_features.size(0) == graph_embedding.size(0):
-                graph_embedding = torch.cat([graph_embedding, graph_features], dim=1)
-
-        # Process graph embedding
-        graph_embedding = self.graph_mlp(graph_embedding)
-
-        # Expand graph embedding to match node dimensions
-        graph_embedding_expanded = graph_embedding[batch]
-
-        # Combine node and graph features for final prediction
-        combined = torch.cat([x, graph_embedding_expanded], dim=1)
-
-        # Final classification
-        out = self.fc(combined)
-
-        return out
+        return self.head(h)
 
 
 class GraphColoringGNN:
@@ -432,26 +364,13 @@ class GraphColoringGNN:
         self,
         num_colors: int = 3,
         hidden_dim: int = 128,
-        num_layers: int = 4,
+        num_layers: int = 8,
         gnn_type: str = "gcn",
         learning_rate: float = 0.001,
         constraint_weight: float = 1.0,
-        diversity_weight: float = 0.1,  # New: encourages using different colors
+        diversity_weight: float = 1.0,
         device: str = "cuda" if torch.cuda.is_available() else "cpu",
     ):
-        """
-        Initialize the GNN coloring system.
-
-        Args:
-            num_colors: Number of colors to use
-            hidden_dim: Hidden dimension of GNN
-            num_layers: Number of GNN layers
-            gnn_type: Type of GNN ('gcn', 'gat', or 'sage')
-            learning_rate: Learning rate for optimizer
-            constraint_weight: Weight for adjacency constraint loss
-            diversity_weight: Weight for color diversity loss
-            device: Device to run on ('cuda' or 'cpu')
-        """
         self.num_colors = num_colors
         self.hidden_dim = hidden_dim
         self.num_layers = num_layers
@@ -461,105 +380,109 @@ class GraphColoringGNN:
         self.diversity_weight = diversity_weight
         self.device = torch.device(device)
 
-        # Initialize model
+        # Initialize model — num_layers controls message-passing iterations
         self.model = GNNColorPredictor(
             input_dim=5,
             hidden_dim=hidden_dim,
             output_dim=num_colors,
-            num_layers=num_layers,
+            num_iterations=num_layers,
             gnn_type=gnn_type,
-            dropout=0.3,
+            dropout=0.1,
+            random_dim=16,
         ).to(self.device)
 
-        # Optimizer only - no classification criterion needed
+        # Optimizer + LR scheduler
         self.optimizer = optim.Adam(self.model.parameters(), lr=learning_rate)
+        self.scheduler = None  # created in train() once we know num_epochs
+
+        # Softmax temperature — annealed from 1.0 → 0.3 during training.
+        # τ < 1 sharpens the softmax, making the dot-product constraint
+        # operate on near-discrete assignments.
+        self.temperature = 1.0
+        self.temp_start = 1.0
+        self.temp_end = 0.3
 
         # Training history
         self.train_losses = []
         self.val_losses = []
-        self.val_conflict_ratios = []  # Track validation conflict ratios
+        self.val_conflict_ratios = []
         self.train_constraint_losses = []
         self.train_diversity_losses = []
 
     def compute_constraint_loss(self, probs, edge_index):
-        """Compute loss for adjacent nodes having same color."""
+        """Dot-product soft conflict: Σ_c p_u(c)·p_v(c) for each edge.
+
+        For one-hot vectors this equals the conflict indicator (1 if same
+        color, 0 otherwise).  For soft vectors it interpolates smoothly.
+        """
         if edge_index.size(1) == 0:
             return torch.tensor(0.0, device=self.device)
 
         src, dst = edge_index[0], edge_index[1]
-        src_probs = probs[src]
-        dst_probs = probs[dst]
-
-        # Dot product measures similarity - we want to minimize this
-        similarity = torch.sum(src_probs * dst_probs, dim=1)
+        similarity = torch.sum(probs[src] * probs[dst], dim=1)
         return similarity.mean()
 
     def compute_diversity_loss(self, probs):
-        """Encourage using all colors to avoid trivial solutions."""
-        # Average color distribution across all nodes
+        """KL(avg_color_distribution || uniform) — penalises colour imbalance."""
         avg_distribution = probs.mean(dim=0)
-
-        # We want uniform distribution to encourage using all colors
         target_uniform = (
             torch.ones(self.num_colors, device=self.device) / self.num_colors
         )
-
-        # KL divergence between average distribution and uniform
         kl_div = F.kl_div(avg_distribution.log(), target_uniform, reduction="batchmean")
         return kl_div
 
-    def compute_entropy_loss(self, probs):
-        """Encourage confident predictions (low entropy)."""
-        # Negative entropy to encourage confident predictions
-        entropy = -torch.sum(probs * torch.log(probs + 1e-10), dim=1)
-        return (
-            -entropy.mean()
-        )  # Negative because we want to minimize negative entropy = maximize confidence
-
     def train_epoch(self, train_loader):
-        """Train for one epoch using constraint-based losses only."""
+        """Train for one epoch.
+
+        Uses straight-through Gumbel-Softmax (hard=True) so the constraint
+        loss evaluates actual discrete colorings (dot product = exact conflict
+        indicator) while gradients flow through the soft approximation.
+        Multiple Gumbel samples per batch reduce variance.
+        """
         self.model.train()
         total_loss = 0
         total_constraint_loss = 0
         total_diversity_loss = 0
-        total_entropy_loss = 0
         total_samples = 0
+
+        num_gumbel_samples = 8
 
         for batch in train_loader:
             batch = batch.to(self.device)
 
-            # Forward pass
-            outputs = self.model(batch)
+            logits = self.model(batch)
 
-            # Convert to probabilities
-            probs = F.softmax(outputs, dim=1)
+            # Straight-through Gumbel-Softmax averaged over K samples:
+            # forward sees one-hot (exact conflict counting), backward gets
+            # smooth gradients.  Averaging reduces variance from the sampling.
+            constraint_loss = torch.tensor(0.0, device=self.device)
+            for _ in range(num_gumbel_samples):
+                hard_probs = F.gumbel_softmax(
+                    logits, tau=self.temperature, hard=True
+                )
+                constraint_loss = constraint_loss + self.compute_constraint_loss(
+                    hard_probs, batch.edge_index
+                )
+            constraint_loss = constraint_loss / num_gumbel_samples
 
-            # Compute constraint loss (adjacent nodes should have different colors)
-            constraint_loss = self.compute_constraint_loss(probs, batch.edge_index)
+            # Soft probs (no Gumbel noise) for diversity — needs smooth,
+            # deterministic gradients.
+            soft_probs = F.softmax(logits, dim=1)
+            diversity_loss = self.compute_diversity_loss(soft_probs)
 
-            # Compute diversity loss (encourage using all colors)
-            diversity_loss = self.compute_diversity_loss(probs)
-
-            # Compute entropy loss (encourage confident predictions)
-            entropy_loss = self.compute_entropy_loss(probs)
-
-            # Total loss - weighted combination
             loss = (
                 self.constraint_weight * constraint_loss
                 + self.diversity_weight * diversity_loss
-                + entropy_loss
-            )  # entropy_loss is already negative, so adding it encourages confidence
+            )
 
-            # Backward pass
             self.optimizer.zero_grad()
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
             self.optimizer.step()
 
-            # Accumulate statistics
             total_loss += loss.item() * batch.num_graphs
             total_constraint_loss += constraint_loss.item() * batch.num_graphs
             total_diversity_loss += diversity_loss.item() * batch.num_graphs
-            total_entropy_loss += entropy_loss.item() * batch.num_graphs
             total_samples += batch.num_graphs
 
         avg_loss = total_loss / total_samples if total_samples > 0 else 0
@@ -569,14 +492,11 @@ class GraphColoringGNN:
         avg_diversity_loss = (
             total_diversity_loss / total_samples if total_samples > 0 else 0
         )
-        avg_entropy_loss = (
-            total_entropy_loss / total_samples if total_samples > 0 else 0
-        )
 
         self.train_constraint_losses.append(avg_constraint_loss)
         self.train_diversity_losses.append(avg_diversity_loss)
 
-        return avg_loss, avg_constraint_loss, avg_diversity_loss, avg_entropy_loss
+        return avg_loss, avg_constraint_loss, avg_diversity_loss
 
     def validate(self, val_loader):
         """Validate the model - compute conflict ratio and other metrics."""
@@ -630,7 +550,7 @@ class GraphColoringGNN:
         train_loader,
         val_loader,
         num_epochs: int = 100,
-        patience: int = 80,
+        patience: int = 200,
         save_path: str = "best_model.pth",
     ):
         """
@@ -649,24 +569,31 @@ class GraphColoringGNN:
         )
         print(f"Training to produce valid {self.num_colors}-colorings")
 
+        # LR scheduler: cosine annealing
+        self.scheduler = optim.lr_scheduler.CosineAnnealingLR(
+            self.optimizer, T_max=num_epochs, eta_min=1e-5
+        )
+
         best_conflict_ratio = float("inf")
         patience_counter = 0
 
         for epoch in range(num_epochs):
+            # Anneal Gumbel-Softmax temperature: exponential decay
+            frac = epoch / max(num_epochs - 1, 1)
+            self.temperature = self.temp_start * (self.temp_end / self.temp_start) ** frac
+
             # Train
-            (
-                train_loss,
-                train_constraint_loss,
-                train_diversity_loss,
-                train_entropy_loss,
-            ) = self.train_epoch(train_loader)
+            train_loss, train_constraint_loss, train_diversity_loss = (
+                self.train_epoch(train_loader)
+            )
             self.train_losses.append(train_loss)
+
+            # Step LR scheduler
+            self.scheduler.step()
 
             # Validate
             val_conflict_ratio, val_avg_colors = self.validate(val_loader)
-            self.val_losses.append(
-                val_conflict_ratio
-            )  # Using conflict ratio as validation "loss"
+            self.val_losses.append(val_conflict_ratio)
             self.val_conflict_ratios.append(val_conflict_ratio)
 
             # Print progress
@@ -674,7 +601,8 @@ class GraphColoringGNN:
                 print(
                     f"Epoch {epoch+1:3d}/{num_epochs}: "
                     f"Train Loss: {train_loss:.4f} (Constraint: {train_constraint_loss:.4f}, "
-                    f"Diversity: {train_diversity_loss:.4f}, Entropy: {train_entropy_loss:.4f}), "
+                    f"Diversity: {train_diversity_loss:.4f}), "
+                    f"Temp: {self.temperature:.3f}, "
                     f"Val Conflict Ratio: {val_conflict_ratio:.4f}, "
                     f"Val Avg Colors: {val_avg_colors:.2f}"
                 )
@@ -714,134 +642,128 @@ class GraphColoringGNN:
             data.graph_features = torch.zeros(1, 2, device=self.device)
         return data
 
-    def predict(self, graph: UndirectedGraph_, use_local_search: bool = True) -> Dict[Any, int]:
+    def predict(
+        self,
+        graph: UndirectedGraph_,
+        use_local_search: bool = True,
+        num_trials: int = 16,
+    ) -> Dict[Any, int]:
         """
-        Predict coloring for a single graph, optionally followed by local search.
+        Predict coloring for a single graph.
 
-        Args:
-            graph: Input graph
-            use_local_search: If True, apply Kempe-chain local search to fix
-                remaining conflicts after the GNN forward pass.
-
-        Returns:
-            Dictionary mapping vertices to colors
+        1. Run the GNN *num_trials* times (batched, one forward pass) to get
+           diverse starting colorings via different random features.
+        2. Pick the best and run tabu search to resolve remaining conflicts.
         """
         self.model.eval()
         data = self._graph_to_data(graph)
 
+        # Build undirected edge index once
+        ei_cpu = data.edge_index.cpu()
+        src0, dst0 = ei_cpu[0], ei_cpu[1]
+        mask0 = src0 < dst0
+        edge_index_undir = torch.stack([src0[mask0], dst0[mask0]], dim=0)
+
+        # Batch all trials → one forward pass
+        from torch_geometric.data import Batch
+        batch = Batch.from_data_list([data.clone() for _ in range(num_trials)])
+        batch = batch.to(self.device)
+
         with torch.no_grad():
-            outputs = self.model(data)
-            predictions = torch.argmax(outputs, dim=1)
+            all_logits = self.model(batch)
 
-        # Local search post-processing
-        if use_local_search:
-            # Build undirected edge index (src < dst) for local search
-            edge_index = data.edge_index.cpu()
-            src, dst = edge_index[0], edge_index[1]
-            mask = src < dst
-            edge_index_undir = torch.stack([src[mask], dst[mask]], dim=0)
+        # Pick the trial with fewest raw conflicts
+        n = data.num_nodes
+        best_preds = None
+        best_c = float("inf")
 
-            predictions_cpu = predictions.cpu()
-            conflicts = count_conflicts(predictions_cpu, edge_index_undir)
-            if conflicts > 0:
-                predictions_cpu, new_conflicts = greedy_local_search(
-                    predictions_cpu, edge_index_undir,
-                    num_classes=self.num_colors,
-                )
-                predictions = predictions_cpu
+        for t in range(num_trials):
+            preds = torch.argmax(all_logits[t * n : (t + 1) * n], dim=1).cpu()
+            c = count_conflicts(preds, edge_index_undir)
+            if c < best_c:
+                best_c = c
+                best_preds = preds
+            if c == 0:
+                vertices = graph.get_vertices()
+                return {v: int(preds[i]) for i, v in enumerate(vertices)}
+
+        # Tabu search to resolve remaining conflicts
+        if use_local_search and best_c > 0:
+            best_preds, best_c = greedy_local_search(
+                best_preds, edge_index_undir,
+                num_classes=self.num_colors,
+                max_iters=max(1000, n * 20),
+            )
 
         vertices = graph.get_vertices()
-        coloring = {
-            vertex: int(predictions[i]) for i, vertex in enumerate(vertices)
-        }
-        return coloring
+        return {vertex: int(best_preds[i]) for i, vertex in enumerate(vertices)}
 
     def fine_tune_predict(
         self,
         graph: UndirectedGraph_,
-        num_steps: int = 200,
-        lr: float = 1e-3,
+        num_steps: int = 100,
+        lr: float = 0.1,
         use_local_search: bool = True,
+        num_trials: int = 16,
+        max_rounds: int = 10,
     ) -> Dict[Any, int]:
         """
-        Predict coloring using the amortized model as initialisation, then
-        fine-tune on this specific graph using the physics constraint loss.
-
-        This combines the best of both approaches:
-        - The pretrained GNN provides a strong starting point (fast).
-        - Per-instance gradient steps resolve graph-specific conflicts.
-        - Local search cleans up any remaining issues.
-
-        Args:
-            graph: Input graph
-            num_steps: Number of fine-tuning gradient steps.
-            lr: Learning rate for fine-tuning.
-            use_local_search: Apply local search after fine-tuning.
-
-        Returns:
-            Dictionary mapping vertices to colors
+        Repeated GNN-sample → tabu-search rounds until a valid coloring is
+        found or *max_rounds* is exhausted.  Each round draws fresh random
+        features, so the GNN proposes a different starting coloring that may
+        avoid the tabu-search dead-end of the previous round.
         """
+        self.model.eval()
         data = self._graph_to_data(graph)
 
-        # Build undirected edge index for loss & local search
-        edge_index = data.edge_index
-        src, dst = edge_index[0], edge_index[1]
-        mask = src < dst
-        edge_index_undir = torch.stack([src[mask], dst[mask]], dim=0)
+        ei_cpu = data.edge_index.cpu()
+        src0, dst0 = ei_cpu[0], ei_cpu[1]
+        mask0 = src0 < dst0
+        edge_index_undir = torch.stack([src0[mask0], dst0[mask0]], dim=0)
+        n = data.num_nodes
 
-        # Fine-tune a copy of the model so the pretrained weights are preserved
-        import copy
-        ft_model = copy.deepcopy(self.model)
-        ft_model.train()
-        optimizer = optim.Adam(ft_model.parameters(), lr=lr)
+        from torch_geometric.data import Batch
 
-        best_conflicts = float("inf")
-        best_predictions = None
+        overall_best_preds = None
+        overall_best_c = float("inf")
 
-        for step in range(num_steps):
-            optimizer.zero_grad()
-            outputs = ft_model(data)
-            probs = F.softmax(outputs, dim=1)
-
-            # Physics constraint loss: minimise dot product of adjacent soft assignments
-            src_u, dst_u = edge_index_undir
-            dot = torch.sum(probs[src_u] * probs[dst_u], dim=1)
-            loss = dot.mean()
-
-            # Diversity: encourage uniform colour usage
-            avg_dist = probs.mean(dim=0)
-            uniform = torch.ones_like(avg_dist) / avg_dist.size(0)
-            loss = loss + 0.01 * torch.sum(
-                avg_dist * (torch.log(avg_dist + 1e-8) - torch.log(uniform))
+        for _ in range(max_rounds):
+            # Fresh GNN batch — new random features each round
+            batch = Batch.from_data_list(
+                [data.clone() for _ in range(num_trials)]
             )
-
-            loss.backward()
-            optimizer.step()
+            batch = batch.to(self.device)
 
             with torch.no_grad():
-                preds = torch.argmax(probs, dim=1)
-                conflicts = count_conflicts(preds.cpu(), edge_index_undir.cpu())
-                if conflicts < best_conflicts:
-                    best_conflicts = conflicts
-                    best_predictions = preds.cpu()
-                if conflicts == 0:
-                    break
+                all_logits = self.model(batch)
 
-        predictions = best_predictions
+            # Pick best raw prediction from this round
+            for t in range(num_trials):
+                preds = torch.argmax(
+                    all_logits[t * n : (t + 1) * n], dim=1
+                ).cpu()
+                c = count_conflicts(preds, edge_index_undir)
+                if c < overall_best_c:
+                    overall_best_c = c
+                    overall_best_preds = preds
+                if c == 0:
+                    vertices = graph.get_vertices()
+                    return {v: int(preds[i]) for i, v in enumerate(vertices)}
 
-        # Local search post-processing
-        if use_local_search and best_conflicts > 0:
-            edge_undir_cpu = edge_index_undir.cpu()
-            predictions, _ = greedy_local_search(
-                predictions, edge_undir_cpu,
+            # Tabu search from this round's best
+            improved, c = greedy_local_search(
+                overall_best_preds, edge_index_undir,
                 num_classes=self.num_colors,
+                max_iters=max(1000, n * 20),
             )
+            if c < overall_best_c:
+                overall_best_c = c
+                overall_best_preds = improved
+            if c == 0:
+                break
 
         vertices = graph.get_vertices()
-        coloring = {
-            vertex: int(predictions[i]) for i, vertex in enumerate(vertices)
-        }
-        return coloring
+        return {v: int(overall_best_preds[i]) for i, v in enumerate(vertices)}
 
     def evaluate_coloring(
         self, graph: UndirectedGraph_, coloring: Dict[Any, int]
@@ -881,14 +803,13 @@ class GraphColoringGNN:
         }
 
     def plot_training_history(self):
-        """Plot training history with new metrics."""
+        """Plot training history."""
         if not self.train_losses:
             print("No training history to plot")
             return
 
         fig, axes = plt.subplots(2, 2, figsize=(15, 10))
 
-        # Plot total loss
         axes[0, 0].plot(self.train_losses, label="Train Loss", color="blue")
         axes[0, 0].set_xlabel("Epoch")
         axes[0, 0].set_ylabel("Loss")
@@ -896,18 +817,16 @@ class GraphColoringGNN:
         axes[0, 0].legend()
         axes[0, 0].grid(True, alpha=0.3)
 
-        # Plot constraint loss
         if self.train_constraint_losses:
             axes[0, 1].plot(
                 self.train_constraint_losses, label="Constraint Loss", color="red"
             )
             axes[0, 1].set_xlabel("Epoch")
             axes[0, 1].set_ylabel("Loss")
-            axes[0, 1].set_title("Constraint Loss (Adjacency)")
+            axes[0, 1].set_title("Log-Barrier Constraint Loss")
             axes[0, 1].legend()
             axes[0, 1].grid(True, alpha=0.3)
 
-        # Plot conflict ratio
         if self.val_conflict_ratios:
             axes[1, 0].plot(
                 self.val_conflict_ratios, label="Val Conflict Ratio", color="green"
@@ -918,8 +837,7 @@ class GraphColoringGNN:
             axes[1, 0].legend()
             axes[1, 0].grid(True, alpha=0.3)
 
-        # Plot diversity loss if available
-        if hasattr(self, "train_diversity_losses") and self.train_diversity_losses:
+        if self.train_diversity_losses:
             axes[1, 1].plot(
                 self.train_diversity_losses, label="Diversity Loss", color="purple"
             )
@@ -958,7 +876,7 @@ class GraphColoringGNN:
 
         # Train on hard graphs
         for epoch in range(num_epochs):
-            train_loss, train_constraint_loss, train_diversity_loss, train_entropy_loss = self.train_epoch(hard_loader)
+            train_loss, train_constraint_loss, train_diversity_loss = self.train_epoch(hard_loader)
 
             if (epoch + 1) % 10 == 0:
                 print(
@@ -1047,7 +965,10 @@ def main():
     """Main function to demonstrate GNN-based graph coloring."""
     import argparse
 
-    parser = argparse.ArgumentParser(description="GNN-based Graph Coloring")
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        description="GNN-based Graph Coloring",
+    )
     parser.add_argument(
         "--graph_type",
         type=str,
@@ -1065,7 +986,7 @@ def main():
         "--hidden_dim", type=int, default=128, help="Hidden dimension of GNN"
     )
     parser.add_argument(
-        "--num_layers", type=int, default=4, help="Number of GNN layers"
+        "--num_layers", type=int, default=8, help="Number of message-passing iterations"
     )
     parser.add_argument(
         "--gnn_type",
@@ -1223,7 +1144,10 @@ def main():
 
             avg_e = total_edges / graphs_per_cell
             tag_a = "✓" if all_valid_amort else f"{amort_total_conflicts} conflicts"
-            tag_f = "✓" if all_valid_ft else f"{ft_total_conflicts} conflicts"
+            if args.fine_tune_steps > 0:
+                tag_f = "✓" if all_valid_ft else f"{ft_total_conflicts} conflicts"
+            else:
+                tag_f = "n/a"
 
             print(f"  n={n_nodes:5d}  edges≈{avg_e:6.0f}  "
                   f"amortized: {tag_a:>15s}  fine-tuned: {tag_f:>15s}  "
