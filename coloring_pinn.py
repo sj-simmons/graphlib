@@ -255,7 +255,8 @@ def _kempe_chain_swap(coloring, adj, node, color_a, color_b):
                 stack.append(nb)
 
 
-def greedy_local_search(coloring, edge_index_undir, num_classes=3, max_iters=1000):
+def greedy_local_search(coloring, edge_index_undir, num_classes=3, max_iters=1000,
+                        tabu_tenure=None):
     """
     Tabu search for graph coloring — the standard heuristic that actually
     escapes local minima.
@@ -291,8 +292,12 @@ def greedy_local_search(coloring, edge_index_undir, num_classes=3, max_iters=100
     best_coloring = coloring.clone()
     best_conflicts = total_conflicts
 
-    # Tabu list: tabu[node][color] = iteration number when the ban expires
-    tabu_tenure = max(7, num_nodes // 10)
+    # Tabu list: tabu[node][color] = iteration number when the ban expires.
+    # Default tenure (n//10) works well for general use.  Callers that start
+    # from a near-valid coloring with very few conflicts can pass a longer
+    # tenure (e.g. n//5) to diversify more aggressively.
+    if tabu_tenure is None:
+        tabu_tenure = max(7, num_nodes // 10)
     tabu = [[0] * num_classes for _ in range(num_nodes)]
 
     for it in range(max_iters):
@@ -319,15 +324,30 @@ def greedy_local_search(coloring, edge_index_undir, num_classes=3, max_iters=100
                 is_tabu = tabu[u][c] > it
                 would_be_best = (total_conflicts + delta) < best_conflicts
 
-                if delta < best_delta and (not is_tabu or would_be_best):
-                    best_delta = delta
-                    best_move = (u, c)
+                if not is_tabu or would_be_best:
+                    if delta < best_delta:
+                        best_delta = delta
+                        best_move = (u, c)
 
         if best_move is None:
             break  # no moves available (shouldn't happen)
 
-        # Apply the move
-        node, new_color = best_move
+        # Collect all moves tied at best_delta and pick one at random.
+        # This breaks determinism so repeated calls explore different paths.
+        tied = []
+        for u in range(num_nodes):
+            if _node_conflicts(u) == 0:
+                continue
+            cur_c = coloring[u].item()
+            for c in range(num_classes):
+                if c == cur_c:
+                    continue
+                delta = node_color_adj[u][c] - node_color_adj[u][cur_c]
+                is_tabu = tabu[u][c] > it
+                would_be_best = (total_conflicts + delta) < best_conflicts
+                if delta == best_delta and (not is_tabu or would_be_best):
+                    tied.append((u, c))
+        node, new_color = random.choice(tied) if tied else best_move
         old_color = coloring[node].item()
 
         # Update node_color_adj for all neighbors

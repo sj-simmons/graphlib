@@ -9,6 +9,7 @@ import numpy as np
 from typing import Any, List, Dict, Tuple, Optional
 import random
 from collections import defaultdict
+from itertools import permutations
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 import sys
@@ -23,6 +24,37 @@ from graph import (
     erdos_renyi_,
 )
 from coloring_pinn import greedy_local_search, count_conflicts
+
+
+def dsatur_coloring(graph, num_colors: int = 3):
+    """DSATUR greedy coloring.  Returns a vertex→color dict (0-based) or None
+    if more than *num_colors* are needed."""
+    vertices = list(graph.get_vertices())
+    if not vertices:
+        return {}
+    degrees = {v: len(graph.get_neighbors(v)) for v in vertices}
+    color = {}
+    # Set of distinct neighbor colors already assigned — used to compute saturation
+    nbr_colors = {v: set() for v in vertices}
+    uncolored = set(vertices)
+
+    while uncolored:
+        # Pick uncolored vertex with highest saturation; break ties by degree
+        v = max(uncolored, key=lambda u: (len(nbr_colors[u]), degrees[u]))
+        used = nbr_colors[v]
+        assigned = None
+        for c in range(num_colors):
+            if c not in used:
+                assigned = c
+                break
+        if assigned is None:
+            return None  # needs > num_colors
+        color[v] = assigned
+        for u in graph.get_neighbors(v):
+            if u in uncolored and assigned not in nbr_colors[u]:
+                nbr_colors[u].add(assigned)
+        uncolored.remove(v)
+    return color
 
 
 class GraphColoringDataset:
@@ -59,7 +91,7 @@ class GraphColoringDataset:
         self.num_colors = num_colors
         self.seed = seed
         self.graphs = []
-        # Remove solutions list since we don't need exact colorings
+        self.solutions: Dict[int, Dict] = {}  # graph_idx -> vertex→color dict
 
         # Set random seeds
         random.seed(seed)
@@ -129,8 +161,13 @@ class GraphColoringDataset:
                 raise ValueError(f"Unknown graph type: {self.graph_type}")
 
             self.graphs.append(graph)
+            sol = dsatur_coloring(graph, num_colors=self.num_colors)
+            if sol is not None:
+                self.solutions[i] = sol
 
-        print(f"Generated {len(self.graphs)} graphs")
+        n_solved = len(self.solutions)
+        print(f"Generated {len(self.graphs)} graphs "
+              f"({n_solved} solved by DSATUR, {len(self.graphs)-n_solved} unsolved)")
 
     def generate_hard_erdos_renyi_graphs(self, num_hard_samples: int = 100):
         """
@@ -234,12 +271,19 @@ class GraphColoringDataset:
             [[len(vertices) / self.max_nodes, density]], dtype=torch.float
         )
 
-        # Return Data without y (target labels)
+        # y: valid color labels from DSATUR, or -1 sentinel (no solution found)
+        if graph_idx in self.solutions:
+            sol = self.solutions[graph_idx]
+            y = torch.tensor([sol[v] for v in vertices], dtype=torch.long)
+        else:
+            y = torch.full((len(vertices),), -1, dtype=torch.long)
+
         return Data(
             x=x,
             edge_index=edge_index,
             num_nodes=len(vertices),
             graph_features=graph_features,
+            y=y,
         )
 
     def get_dataloaders(
@@ -369,6 +413,7 @@ class GraphColoringGNN:
         learning_rate: float = 0.001,
         constraint_weight: float = 1.0,
         diversity_weight: float = 1.0,
+        supervised_weight: float = 1.0,
         device: str = "cuda" if torch.cuda.is_available() else "cpu",
     ):
         self.num_colors = num_colors
@@ -378,6 +423,7 @@ class GraphColoringGNN:
         self.learning_rate = learning_rate
         self.constraint_weight = constraint_weight
         self.diversity_weight = diversity_weight
+        self.supervised_weight = supervised_weight
         self.device = torch.device(device)
 
         # Initialize model — num_layers controls message-passing iterations
@@ -408,6 +454,7 @@ class GraphColoringGNN:
         self.val_conflict_ratios = []
         self.train_constraint_losses = []
         self.train_diversity_losses = []
+        self.train_supervised_losses = []
 
     def compute_constraint_loss(self, probs, edge_index):
         """Dot-product soft conflict: Σ_c p_u(c)·p_v(c) for each edge.
@@ -443,9 +490,11 @@ class GraphColoringGNN:
         total_loss = 0
         total_constraint_loss = 0
         total_diversity_loss = 0
+        total_supervised_loss = 0
         total_samples = 0
 
         num_gumbel_samples = 8
+        _all_perms = list(permutations(range(self.num_colors)))
 
         for batch in train_loader:
             batch = batch.to(self.device)
@@ -475,6 +524,33 @@ class GraphColoringGNN:
                 + self.diversity_weight * diversity_loss
             )
 
+            # Permutation-invariant supervised CE for graphs with DSATUR solutions.
+            # y == -1 means no solution was found; skip those graphs.
+            # For each solved graph try all k! color permutations, keep minimum CE
+            # — this makes the loss invariant to which color name is which.
+            if self.supervised_weight > 0 and hasattr(batch, 'y') and batch.y is not None:
+                sup_loss = torch.tensor(0.0, device=self.device)
+                sup_count = 0
+                for g_idx in range(batch.num_graphs):
+                    mask = batch.batch == g_idx
+                    g_labels = batch.y[mask]
+                    if g_labels[0].item() == -1:
+                        continue  # no DSATUR solution for this graph
+                    g_logits = logits[mask]
+                    best_ce = None
+                    for perm in _all_perms:
+                        perm_t = torch.tensor(perm, dtype=torch.long, device=self.device)
+                        remapped = perm_t[g_labels]
+                        ce = F.cross_entropy(g_logits, remapped)
+                        if best_ce is None or ce.item() < best_ce.item():
+                            best_ce = ce
+                    sup_loss = sup_loss + best_ce
+                    sup_count += 1
+                if sup_count > 0:
+                    sup_loss = sup_loss / sup_count
+                    loss = loss + self.supervised_weight * sup_loss
+                    total_supervised_loss += sup_loss.item() * batch.num_graphs
+
             self.optimizer.zero_grad()
             loss.backward()
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
@@ -492,11 +568,15 @@ class GraphColoringGNN:
         avg_diversity_loss = (
             total_diversity_loss / total_samples if total_samples > 0 else 0
         )
+        avg_supervised_loss = (
+            total_supervised_loss / total_samples if total_samples > 0 else 0
+        )
 
         self.train_constraint_losses.append(avg_constraint_loss)
         self.train_diversity_losses.append(avg_diversity_loss)
+        self.train_supervised_losses.append(avg_supervised_loss)
 
-        return avg_loss, avg_constraint_loss, avg_diversity_loss
+        return avg_loss, avg_constraint_loss, avg_diversity_loss, avg_supervised_loss
 
     def validate(self, val_loader):
         """Validate the model - compute conflict ratio and other metrics."""
@@ -583,7 +663,7 @@ class GraphColoringGNN:
             self.temperature = self.temp_start * (self.temp_end / self.temp_start) ** frac
 
             # Train
-            train_loss, train_constraint_loss, train_diversity_loss = (
+            train_loss, train_constraint_loss, train_diversity_loss, train_supervised_loss = (
                 self.train_epoch(train_loader)
             )
             self.train_losses.append(train_loss)
@@ -601,7 +681,8 @@ class GraphColoringGNN:
                 print(
                     f"Epoch {epoch+1:3d}/{num_epochs}: "
                     f"Train Loss: {train_loss:.4f} (Constraint: {train_constraint_loss:.4f}, "
-                    f"Diversity: {train_diversity_loss:.4f}), "
+                    f"Diversity: {train_diversity_loss:.4f}, "
+                    f"Supervised: {train_supervised_loss:.4f}), "
                     f"Temp: {self.temperature:.3f}, "
                     f"Val Conflict Ratio: {val_conflict_ratio:.4f}, "
                     f"Val Avg Colors: {val_avg_colors:.2f}"
@@ -693,6 +774,7 @@ class GraphColoringGNN:
                 best_preds, edge_index_undir,
                 num_classes=self.num_colors,
                 max_iters=max(1000, n * 20),
+                tabu_tenure=max(7, n // 5),
             )
 
         vertices = graph.get_vertices()
@@ -728,33 +810,32 @@ class GraphColoringGNN:
         overall_best_c = float("inf")
 
         for _ in range(max_rounds):
-            # Fresh GNN batch — new random features each round
             batch = Batch.from_data_list(
                 [data.clone() for _ in range(num_trials)]
             )
             batch = batch.to(self.device)
-
             with torch.no_grad():
                 all_logits = self.model(batch)
 
-            # Pick best raw prediction from this round
+            round_best_preds = None
+            round_best_c = float("inf")
             for t in range(num_trials):
                 preds = torch.argmax(
                     all_logits[t * n : (t + 1) * n], dim=1
                 ).cpu()
                 c = count_conflicts(preds, edge_index_undir)
-                if c < overall_best_c:
-                    overall_best_c = c
-                    overall_best_preds = preds
+                if c < round_best_c:
+                    round_best_c = c
+                    round_best_preds = preds
                 if c == 0:
                     vertices = graph.get_vertices()
                     return {v: int(preds[i]) for i, v in enumerate(vertices)}
 
-            # Tabu search from this round's best
             improved, c = greedy_local_search(
-                overall_best_preds, edge_index_undir,
+                round_best_preds, edge_index_undir,
                 num_classes=self.num_colors,
-                max_iters=max(1000, n * 20),
+                max_iters=max(2000, n * 50),
+                tabu_tenure=max(7, n // 5),
             )
             if c < overall_best_c:
                 overall_best_c = c
@@ -876,13 +957,16 @@ class GraphColoringGNN:
 
         # Train on hard graphs
         for epoch in range(num_epochs):
-            train_loss, train_constraint_loss, train_diversity_loss = self.train_epoch(hard_loader)
+            train_loss, train_constraint_loss, train_diversity_loss, train_supervised_loss = (
+                self.train_epoch(hard_loader)
+            )
 
             if (epoch + 1) % 10 == 0:
                 print(
                     f"Hard Training Epoch {epoch+1:3d}/{num_epochs}: "
                     f"Loss: {train_loss:.4f} (Constraint: {train_constraint_loss:.4f}, "
-                    f"Diversity: {train_diversity_loss:.4f})"
+                    f"Diversity: {train_diversity_loss:.4f}, "
+                    f"Supervised: {train_supervised_loss:.4f})"
                 )
 
 
@@ -1012,8 +1096,12 @@ def main():
         help="Compare with CSP solver on test graphs",
     )
     parser.add_argument(
-        "--train_max_nodes", type=int, default=30,
-        help="Max nodes for training graphs (train on small for speed)",
+        "--train_max_nodes", type=int, default=100,
+        help="Max nodes for training graphs",
+    )
+    parser.add_argument(
+        "--supervised_weight", type=float, default=1.0,
+        help="Weight for DSATUR-supervised cross-entropy loss (0 to disable)",
     )
     parser.add_argument(
         "--fine_tune_steps", type=int, default=300,
@@ -1052,6 +1140,7 @@ def main():
         gnn_type=args.gnn_type,
         learning_rate=0.001,
         constraint_weight=args.constraint_weight,
+        supervised_weight=args.supervised_weight,
     )
 
     # Train the model
