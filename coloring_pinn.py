@@ -257,20 +257,18 @@ def _kempe_chain_swap(coloring, adj, node, color_a, color_b):
 
 def greedy_local_search(coloring, edge_index_undir, num_classes=3, max_iters=1000):
     """
-    Robust local search combining greedy re-coloring, Kempe chain swaps,
-    and random perturbation to resolve remaining conflicts.
+    Tabu search for graph coloring — the standard heuristic that actually
+    escapes local minima.
 
-    Strategy:
-      1. Greedy passes (fast, handles easy conflicts).
-      2. When greedy stalls, try Kempe chain swaps on conflicting nodes
-         — these restructure the coloring non-locally to create room.
-      3. If still stuck, randomly perturb a small neighbourhood around
-         a conflicting node and retry greedy.
+    Each iteration picks the best (node, color) move among conflicting nodes.
+    A tabu list prevents cycling by forbidding a node from reverting to its
+    old color for *tabu_tenure* iterations.  An aspiration criterion overrides
+    the tabu if the move produces a new global best.
 
     coloring : (N,) tensor of hard color assignments (0 … C‑1).
     edge_index_undir : (2, E_undir) unique undirected edges (src < dst).
     num_classes : number of available colors.
-    max_iters : maximum number of outer iterations.
+    max_iters : maximum number of iterations.
 
     Returns (improved_coloring, final_conflicts).
     """
@@ -278,75 +276,76 @@ def greedy_local_search(coloring, edge_index_undir, num_classes=3, max_iters=100
     num_nodes = coloring.size(0)
     adj = _build_adj(edge_index_undir, num_nodes)
 
-    best_coloring = coloring.clone()
-    best_conflicts = count_conflicts(coloring, edge_index_undir)
+    # Precompute per-node conflict counts for O(1) delta evaluation
+    # node_color_adj[u][c] = number of neighbors of u with color c
+    node_color_adj = [[0] * num_classes for _ in range(num_nodes)]
+    for u in range(num_nodes):
+        for v in adj[u]:
+            node_color_adj[u][coloring[v].item()] += 1
 
-    for iteration in range(max_iters):
-        cur_conflicts = count_conflicts(coloring, edge_index_undir)
-        if cur_conflicts == 0:
+    def _node_conflicts(u):
+        return node_color_adj[u][coloring[u].item()]
+
+    total_conflicts = sum(_node_conflicts(u) for u in range(num_nodes)) // 2
+
+    best_coloring = coloring.clone()
+    best_conflicts = total_conflicts
+
+    # Tabu list: tabu[node][color] = iteration number when the ban expires
+    tabu_tenure = max(7, num_nodes // 10)
+    tabu = [[0] * num_classes for _ in range(num_nodes)]
+
+    for it in range(max_iters):
+        if total_conflicts == 0:
             return coloring, 0
 
-        # Track overall best
-        if cur_conflicts < best_conflicts:
-            best_conflicts = cur_conflicts
+        # Find the best move among conflicting nodes
+        best_move = None   # (node, new_color)
+        best_delta = float("inf")
+
+        for u in range(num_nodes):
+            if _node_conflicts(u) == 0:
+                continue  # not conflicting
+            cur_c = coloring[u].item()
+            cur_conf = node_color_adj[u][cur_c]
+
+            for c in range(num_classes):
+                if c == cur_c:
+                    continue
+                new_conf = node_color_adj[u][c]
+                delta = new_conf - cur_conf   # change in conflicts for this node
+
+                # Accept if: (not tabu) OR (aspiration: produces new global best)
+                is_tabu = tabu[u][c] > it
+                would_be_best = (total_conflicts + delta) < best_conflicts
+
+                if delta < best_delta and (not is_tabu or would_be_best):
+                    best_delta = delta
+                    best_move = (u, c)
+
+        if best_move is None:
+            break  # no moves available (shouldn't happen)
+
+        # Apply the move
+        node, new_color = best_move
+        old_color = coloring[node].item()
+
+        # Update node_color_adj for all neighbors
+        for v in adj[node]:
+            node_color_adj[v][old_color] -= 1
+            node_color_adj[v][new_color] += 1
+
+        coloring[node] = new_color
+        tabu[node][old_color] = it + tabu_tenure
+
+        # Update total conflict count
+        total_conflicts += best_delta
+
+        if total_conflicts < best_conflicts:
+            best_conflicts = total_conflicts
             best_coloring = coloring.clone()
 
-        # Phase 1: greedy pass
-        if _greedy_pass(coloring, adj, num_classes):
-            continue  # greedy made progress, try another pass
-
-        # Phase 2: Kempe chain swaps on conflicting nodes
-        conflicting = _find_conflicting_nodes(coloring, adj)
-        if not conflicting:
-            return coloring, 0
-
-        kempe_helped = False
-        random.shuffle(conflicting)
-        for node in conflicting:
-            node_color = coloring[node].item()
-            # Try swapping node's color with each other color
-            other_colors = [c for c in range(num_classes) if c != node_color]
-            random.shuffle(other_colors)
-            for other_color in other_colors:
-                saved = coloring.clone()
-                _kempe_chain_swap(coloring, adj, node, node_color, other_color)
-                new_conflicts = count_conflicts(coloring, edge_index_undir)
-                if new_conflicts < cur_conflicts:
-                    kempe_helped = True
-                    break  # accept this swap
-                else:
-                    coloring = saved  # revert
-            if kempe_helped:
-                break
-
-        if kempe_helped:
-            continue
-
-        # Phase 3: random perturbation — re-color a neighbourhood to escape local minimum
-        node = random.choice(conflicting)
-        # Collect nodes within distance 2 of the conflicting node
-        perturb_set = set(adj[node])
-        perturb_set.add(node)
-        for nb in list(perturb_set):
-            perturb_set.update(adj[nb])
-
-        saved = coloring.clone()
-        for n in perturb_set:
-            coloring[n] = random.randint(0, num_classes - 1)
-
-        # Run a few greedy passes to clean up the perturbation
-        for _ in range(20):
-            if not _greedy_pass(coloring, adj, num_classes):
-                break
-
-        new_conflicts = count_conflicts(coloring, edge_index_undir)
-        if new_conflicts > cur_conflicts:
-            coloring = saved  # revert if perturbation made things worse
-
-    final_conflicts = count_conflicts(coloring, edge_index_undir)
-    if best_conflicts < final_conflicts:
-        return best_coloring, best_conflicts
-    return coloring, final_conflicts
+    return best_coloring, best_conflicts
 
 
 def analyze_coloring(coloring, num_classes=3):
@@ -413,6 +412,7 @@ def train_on_graph(data, num_classes=3, device="cpu", hypers=None):
         num_layers=hypers.get("num_layers", 4),
         dropout=dropout,
     ).to(device)
+    # print(model)
     # if hasattr(torch, 'compile'):
     #    model = torch.compile(model)
     optimizer = optim.AdamW(
@@ -573,13 +573,15 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
+    num_nodes = args.num_nodes
     set_seed(args.seed)
     device = torch.device(args.device)
     print(f"Using device: {device}")
-    print(f"Number of nodes per graph: {args.num_nodes}")
-    min_p, max_p = 4.0 / args.num_nodes, 4.6 / args.num_nodes
+    print(f"Number of nodes per graph: {num_nodes}")
+    min_p, max_p = 4.0 / num_nodes, 4.6 / num_nodes
     edge_probabilities = [min_p + (max_p - min_p) * i / 10 for i in range(10)]
-    print(f"Edge probabilities: {[round(e,5) for e in edge_probabilities]}")
+    print(f"edge_probs    : {[round(e,5) for e in edge_probabilities]}")
+    print(f"edge_probs * n: {[round(e*num_nodes,2) for e in edge_probabilities]}")
 
     hypers = {
         "dim_embedding": 128,  # Increased for richer representations
@@ -603,7 +605,7 @@ if __name__ == "__main__":
         print(f"=== p = {p:.3f} ===")
         # Generate ER graph (weights are irrelevant, set to constant 1)
         ugraph = UndirectedGraph_()
-        erdos_renyi_(ugraph, n=args.num_nodes, p=p, weight_range=(1, 1), seed=args.seed)
+        erdos_renyi_(ugraph, n=num_nodes, p=p, weight_range=(1, 1), seed=args.seed)
         data = er_graph_to_data(ugraph)
         data = data.to(device)
         print(
